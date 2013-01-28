@@ -1,0 +1,18 @@
+install_builtin(@"boot", @"debug-mode", @"1");
+install_builtin(@"boot", @"icloud-kvs-path", @"(path-in-docs \"notes\")");
+install_builtin(@"boot", @"app", @"(UIApplication sharedApplication)");
+install_builtin(@"boot", @"app-delegate", @"(app delegate)");
+install_builtin(@"boot", @"window", @"(app-delegate window)");
+install_builtin(@"boot", @"icloud-kvs", @"(app-delegate kvStore)");
+install_builtin(@"boot", @"application-did-finish-launching", @"nil");
+install_builtin(@"boot", @"application-will-resign-active", @"nil");
+install_builtin(@"boot", @"application-did-enter-background", @"nil");
+install_builtin(@"boot", @"application-will-enter-foreground", @"nil");
+install_builtin(@"boot", @"application-did-become-active", @"nil");
+install_builtin(@"boot", @"application-will-terminate", @"nil");
+install_builtin(@"boot", @"application-open-url", @"nil");
+install_builtin(@"boot", @"application-motion-began", @"nil");
+install_builtin(@"boot", @"application-motion-ended", @"nil");
+install_builtin(@"boot", @"application-motion-cancelled", @"nil");
+install_builtin(@"boot", @"application-did-receive-memory-warning", @"nil");
+install_builtin(@"boot", @"application-significant-time-change", @"nil");
