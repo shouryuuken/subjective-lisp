@@ -2014,6 +2014,7 @@ void load_builtins()
 #include "builtin_enum.c"
 #include "builtin_curl.c"
     
+    install_builtin(@"math", @"INFINITY", [NSNumber numberWithDouble:INFINITY]);
     install_builtin(@"math", @"M_PI", [NSNumber numberWithDouble:M_PI]);
     install_builtin(@"cocoa", @"CGAffineTransformIdentity", get_nu_value_from_objc_value(&CGAffineTransformIdentity, "{CGAffineTransform=ffffff}"));
     

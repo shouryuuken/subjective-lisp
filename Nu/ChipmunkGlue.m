@@ -65,6 +65,20 @@ void nufn(char *name, void *fn, char *signature)
 
 @implementation ChipmunkGlue
 
+static inline cpFloat
+frand(void)
+{
+	return (cpFloat)rand()/(cpFloat)RAND_MAX;
+}
+
+static cpVect
+frand_unit_circle()
+{
+	cpVect v = cpv(frand()*2.0f - 1.0f, frand()*2.0f - 1.0f);
+	return (cpvlengthsq(v) < 1.0f ? v : frand_unit_circle());
+}
+
+
 + (void)bindings
 {    
     nusym("cpfinfinity", [NSNumber numberWithFloat:INFINITY]);
@@ -141,7 +155,11 @@ void nufn(char *name, void *fn, char *signature)
 //    nufn("cp-area-for-poly", cpAreaForPoly, "f
 //    cpFloat cpAreaForPoly(const int numVerts, const cpVect *verts)
     
-    nufn("cp-reset-shape-id-counter", cpResetShapeIdCounter, "v");    
+    nufn("cp-reset-shape-id-counter", cpResetShapeIdCounter, "v");
+    
+    nufn("frand", frand, "f");
+    
+    nufn("cp-space-use-spatial-hash", cpSpaceUseSpatialHash, "v^vfi");
 }
 
 @end

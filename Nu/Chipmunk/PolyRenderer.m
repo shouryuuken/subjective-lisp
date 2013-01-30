@@ -8,6 +8,285 @@
 #import "arm_neon.h"
 #endif
 
+#import <sys/sysctl.h>
+
+#import "ObjectiveChipmunk.h"
+#import "ChipmunkHastySpace.h"
+
+#define SHAPE_OUTLINE_WIDTH 1.0
+#define SHAPE_OUTLINE_COLOR ((Color){200.0/255.0, 210.0/255.0, 230.0/255.0, 1.0})
+
+#define CONTACT_COLOR ((Color){1.0, 0.0, 0.0, 1.0})
+
+#define CONSTRAINT_DOT_RADIUS 3.0
+#define CONSTRAINT_LINE_RADIUS 1.0
+#define CONSTRAINT_COLOR ((Color){0.0, 0.75, 0.0, 1.0})
+
+@implementation ChipmunkBody(DemoRenderer)
+
+-(Transform)extrapolatedTransform:(NSTimeInterval)dt
+{
+	cpBody *body = self.body;
+	cpVect pos = cpvadd(body->p, cpvmult(body->v, dt));;
+	cpVect rot = cpvforangle(body->a + body->w*dt);
+	
+	return (Transform){
+		rot.x, -rot.y, pos.x,
+		rot.y,  rot.x, pos.y,
+	};
+}
+
+@end
+
+
+@interface ChipmunkShape()
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+-(Color)color;
+
+@end
+
+@implementation ChipmunkShape(DemoRenderer)
+
+static Color
+ColorFromHash(cpHashValue hash, float alpha)
+{
+	unsigned long val = (unsigned long)hash;
+	
+	// scramble the bits up using Robert Jenkins' 32 bit integer hash function
+	val = (val+0x7ed55d16) + (val<<12);
+	val = (val^0xc761c23c) ^ (val>>19);
+	val = (val+0x165667b1) + (val<<5);
+	val = (val+0xd3a2646c) ^ (val<<9);
+	val = (val+0xfd7046c5) + (val<<3);
+	val = (val^0xb55a4f09) ^ (val>>16);
+	
+	GLfloat r = (val>>0) & 0xFF;
+	GLfloat g = (val>>8) & 0xFF;
+	GLfloat b = (val>>16) & 0xFF;
+	
+	GLfloat max = MAX(MAX(r, g), b);
+	GLfloat min = MIN(MIN(r, g), b);
+	GLfloat intensity = 0.75;
+	
+	// Saturate and scale the color
+	if(min == max){
+		return RGBAColor(intensity, 0.0, 0.0, alpha);
+	} else {
+		GLfloat coef = alpha*intensity/(max - min);
+		return (Color){
+			(r - min)*coef,
+			(g - min)*coef,
+			(b - min)*coef,
+			alpha
+		};
+	}
+}
+
+-(Color)color
+{
+	// This method uses some private API to detect some states you normally shouldn't care about.
+	if(self.sensor){
+		return LAColor(0.0, 0.0);
+	} else {
+		ChipmunkBody *body = self.body;
+		
+		if(body.isStatic || body.isSleeping){
+			return LAColor(0.5, 1.0);
+		} else if(body.body->node.idleTime > self.shape->space->sleepTimeThreshold) {
+			return LAColor(0.33, 1.0);
+		} else {
+			return ColorFromHash(self.shape->hashid, 1.0);
+		}
+	}
+}
+
+@end
+
+// TODO add optional line and fill modes?
+@implementation ChipmunkCircleShape(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect pos = cpvadd(self.body.body->p, cpvmult(self.body.body->v, dt));
+    [renderer drawDot:pos radius:4.0 color:SHAPE_OUTLINE_COLOR];
+}
+/*
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect offset = self.offset;
+	cpFloat r1 = MAX(self.radius, SHAPE_OUTLINE_WIDTH);
+	cpFloat r2 = r1 - SHAPE_OUTLINE_WIDTH;
+	
+	Transform t = [self.body extrapolatedTransform:dt];
+	cpVect pos = t_point(t, offset);
+	cpVect end = t_point(t, cpv(offset.x, offset.y + r2));
+	
+	[renderer drawDot:pos radius:r1 color:SHAPE_OUTLINE_COLOR];
+	if(r2 > 0.0) [renderer drawDot:pos radius:r2 color:self.color];
+	[renderer drawSegmentFrom:pos to:end radius:SHAPE_OUTLINE_WIDTH color:SHAPE_OUTLINE_COLOR];
+}
+*/
+@end
+
+
+@implementation ChipmunkSegmentShape(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	Transform t = [self.body extrapolatedTransform:dt];
+	cpVect a = t_point(t, self.a);
+	cpVect b = t_point(t, self.b);
+	
+	cpFloat r1 = MAX(self.radius, SHAPE_OUTLINE_WIDTH);
+	cpFloat r2 = r1 - SHAPE_OUTLINE_WIDTH;
+	
+	[renderer drawSegmentFrom:a to:b radius:r1 color:SHAPE_OUTLINE_COLOR];
+	if(r2 > 0.0) [renderer drawSegmentFrom:a to:b radius:r2 color:self.color];
+}
+
+@end
+
+
+@implementation ChipmunkPolyShape(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpPolyShape *poly = (cpPolyShape *)self.shape;
+	
+	cpVect *verts = poly->verts;
+	NSUInteger count = poly->numVerts;
+	
+	Transform t = [self.body extrapolatedTransform:dt];
+	cpVect tverts[count];
+	for(int i=0; i<count; i++){
+		tverts[i] = t_point(t, verts[i]);
+	}
+	
+	[renderer drawPolyWithVerts:tverts count:count width:1.0 fill:self.color line:SHAPE_OUTLINE_COLOR];
+}
+
+@end
+
+
+@interface ChipmunkConstraint()
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+
+@end
+
+
+@implementation ChipmunkConstraint(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt {}
+
+@end
+
+
+@implementation ChipmunkPinJoint(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect a = [self.bodyA local2world:self.anchr1];
+	cpVect b = [self.bodyB local2world:self.anchr2];
+	
+	[renderer drawDot:a radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawDot:b radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawSegmentFrom:a to:b radius:CONSTRAINT_LINE_RADIUS color:CONSTRAINT_COLOR];
+}
+
+@end
+
+
+@implementation ChipmunkSlideJoint(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect a = t_point([self.bodyA extrapolatedTransform:dt], self.anchr1);
+	cpVect b = t_point([self.bodyB extrapolatedTransform:dt], self.anchr2);
+	
+	[renderer drawDot:a radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawDot:b radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawSegmentFrom:a to:b radius:CONSTRAINT_LINE_RADIUS color:CONSTRAINT_COLOR];
+}
+
+@end
+
+
+@implementation ChipmunkPivotJoint(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect a = t_point([self.bodyA extrapolatedTransform:dt], self.anchr1);
+	cpVect b = t_point([self.bodyB extrapolatedTransform:dt], self.anchr2);
+	
+	[renderer drawDot:a radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawDot:b radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+}
+
+@end
+
+
+@implementation ChipmunkGrooveJoint(DemoRenderer)
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	// Hmm apparently I never made the groove joint properties...
+	cpVect a = t_point([self.bodyA extrapolatedTransform:dt], cpGrooveJointGetGrooveA(self.constraint));
+	cpVect b = t_point([self.bodyA extrapolatedTransform:dt], cpGrooveJointGetGrooveB(self.constraint));
+	cpVect c = t_point([self.bodyB extrapolatedTransform:dt], cpGrooveJointGetAnchr2(self.constraint));
+	
+	[renderer drawSegmentFrom:a to:b radius:CONSTRAINT_LINE_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawDot:c radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+}
+
+@end
+
+
+@implementation ChipmunkDampedSpring(DemoRenderer)
+
+static const cpVect SPRING_VERTS[] = {
+	{0.00f, 0.0f},
+	{0.20f, 0.0f},
+	{0.25f, 3.0f},
+	{0.30f,-6.0f},
+	{0.35f, 6.0f},
+	{0.40f,-6.0f},
+	{0.45f, 6.0f},
+	{0.50f,-6.0f},
+	{0.55f, 6.0f},
+	{0.60f,-6.0f},
+	{0.65f, 6.0f},
+	{0.70f,-3.0f},
+	{0.75f, 6.0f},
+	{0.80f, 0.0f},
+	{1.00f, 0.0f},
+};
+static const int SPRING_COUNT = sizeof(SPRING_VERTS)/sizeof(cpVect);
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+	cpVect a = t_point([self.bodyA extrapolatedTransform:dt], self.anchr1);
+	cpVect b = t_point([self.bodyB extrapolatedTransform:dt], self.anchr2);
+	Transform t = t_mult(t_boneScale(a, b), t_scale(1.0, 1.0/cpvdist(a, b)));
+	
+	cpVect verts[SPRING_COUNT];
+	for(int i=0; i<SPRING_COUNT; i++){
+		verts[i] = t_point(t, SPRING_VERTS[i]);
+	}
+	
+	for(int i=1; i<SPRING_COUNT; i++){
+		[renderer drawSegmentFrom:verts[i-1] to:verts[i] radius:CONSTRAINT_LINE_RADIUS color:CONSTRAINT_COLOR];
+	}
+	
+	[renderer drawDot:a radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+	[renderer drawDot:b radius:CONSTRAINT_DOT_RADIUS color:CONSTRAINT_COLOR];
+}
+
+@end
+
+
+
 enum {
     UNIFORM_PROJECTION_MATRIX,
 //		UNIFORM_TEXTURE,

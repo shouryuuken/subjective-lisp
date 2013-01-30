@@ -10,6 +10,15 @@
 #import <OpenGLES/EAGLDrawable.h>
 
 #import "GLView.h"
+#import "PolyRenderer.h"
+
+#import <objc/runtime.h>
+
+#define GRABABLE_MASK_BIT (1<<31)
+#define NOT_GRABABLE_MASK (~GRABABLE_MASK_BIT)
+
+
+
 
 @implementation GLView {
 	GLuint _framebuffer;
@@ -17,21 +26,71 @@
 	
 	BOOL _isRendering;
 	dispatch_queue_t _renderQueue;
+
+	PolyRenderer *_renderer;
+	NSTimeInterval _lastFrameTime;
+
+    ChipmunkMultiGrab *_multiGrab;
+	
+	// Convert touches to absolute coords.
+	Transform _touchTransform;
+	
+	NSTimeInterval _accumulator;
+	NSTimeInterval _fixedTime;
+    
+    ChipmunkSpace *_space;
 }
 
 @synthesize isRendering = _isRendering;
-
 @synthesize context = _context;
-
 @synthesize drawableWidth = _drawableWidth, drawableHeight = _drawableHeight;
+@synthesize displayLink = _displayLink;
+@synthesize touchTransform = _touchTransform;
+
+@synthesize ticks = _ticks;
+@synthesize fixedTime = _fixedTime;
+@synthesize accumulator = _accumulator;
+@synthesize timeScale = _timeScale;
+
+@synthesize timeStep = _timeStep;
+
+-(void)setupGL
+{
+	[self runInRenderQueue:^{
+		GLfloat clear = 1.0;
+		glClearColor(clear, clear, clear, 1.0);
+        
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		
+		CGSize viewSize = self.bounds.size;
+		Transform proj = t_mult(t_scale((viewSize.height/viewSize.width)*(4.0/3.0), 1.0), t_ortho(cpBBNew(-320, -240, 320, 240)));
+		self.touchTransform = t_mult(t_inverse(proj), t_ortho(cpBBNew(0, viewSize.height, viewSize.width, 0)));
+		
+		_renderer = [[PolyRenderer alloc] initWithProjection:proj];
+	} sync:TRUE];
+}
+
+- (void)tearDownGL
+{
+	[self runInRenderQueue:^{
+		NSLog(@"Tearing down GL");
+		_renderer = nil;
+	} sync:TRUE];
+}
+
 
 -(void)sync
 {
+    if (!_renderQueue)
+        return;
 	dispatch_sync(_renderQueue, ^{});
 }
 
 -(void)runInRenderQueue:(void (^)(void))block sync:(BOOL)sync;
 {
+    if (!_renderQueue)
+        return;
 	(sync ? dispatch_sync : dispatch_async)(_renderQueue, ^{
 		[EAGLContext setCurrentContext:_context];
 		
@@ -114,7 +173,13 @@
 - (id)initWithFrame:(CGRect)r
 {
 	if((self = [super initWithFrame:r])) {
-		CAEAGLLayer *layer = (CAEAGLLayer*) self.layer;
+
+		
+		_timeScale = 1.0;
+		_timeStep = 1.0 / 60.0;
+
+		
+        CAEAGLLayer *layer = (CAEAGLLayer*) self.layer;
 		
 		layer.opaque = YES;
 		layer.drawableProperties = [NSDictionary dictionaryWithObjectsAndKeys:
@@ -124,20 +189,50 @@
 		];
 		
 		layer.contentsScale = [UIScreen mainScreen].scale;
-		
+
+        // Add a nice shadow.
+        self.layer.shadowColor = [UIColor blackColor].CGColor;
+        self.layer.shadowOpacity = 1.0f;
+        self.layer.shadowOffset = CGSizeZero;
+        self.layer.shadowRadius = 15.0;
+        self.layer.masksToBounds = NO;
+        self.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
+
 		_renderQueue = dispatch_queue_create("net.chipmunk-physics.showcase-renderqueue", NULL);
-	}
+		
+        _context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+        NSAssert(_context, @"Failed to create ES context");
+        
+        [self setupGL];
+        
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[self methodSignatureForSelector:@selector(tick:)]];
+        [invocation setTarget:self];
+        [invocation setSelector:@selector(tick:)];
+        self.displayLink = [CADisplayLink displayLinkWithTarget:invocation selector:@selector(invoke)];
+        self.displayLink.frameInterval = 1;
+        objc_setAssociatedObject(self.displayLink, @"ios6sucks", invocation, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSDefaultRunLoopMode];
+
+    }
 	
 	return self;
 }
 
 -(void)dealloc
 {
+    NSLog(@"GLView dealloc %p", self);
+	[_displayLink invalidate];
+	_displayLink = nil;
+
+    [self tearDownGL];
+    
 	[self runInRenderQueue:^{
 		[self destroyFramebuffer];
 	} sync:TRUE];
 	
 	dispatch_release(_renderQueue);
+    
+    [super dealloc];
 }
 
 //MARK: Render methods
@@ -159,6 +254,97 @@
 			_isRendering = FALSE;
 		} sync:sync];
 	}
+}
+
+#define MAX_DT (1.0/15.0)
+
+-(void)tick:(CADisplayLink *)displayLink
+{
+    if (!_space)
+        return;
+    
+	NSTimeInterval time = _displayLink.timestamp;
+	
+    [_space step:_timeStep];
+	
+	BOOL needs_sync = (time - _lastFrameTime > MAX_DT);
+	if(!self.isRendering || needs_sync){
+		if(needs_sync) [self sync];
+
+        for(ChipmunkShape *shape in _space.shapes){
+            [shape drawWithRenderer:_renderer dt:_timeStep];
+        }
+        
+        /*	for(ChipmunkConstraint *constraint in _space.constraints){
+         [constraint drawWithRenderer:renderer dt:_accumulator];
+         }*/
+        
+		
+		[self display:^{
+			[self clear];
+			[_renderer render];
+		} sync:needs_sync];
+		
+		_lastFrameTime = time;
+	}
+	
+}
+
+
+
+-(cpVect)convertTouch:(UITouch *)touch;
+{
+	return t_point(_touchTransform, [touch locationInView:touch.view]);
+}
+
+-(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event;
+{
+	for(UITouch *touch in touches){
+		[_multiGrab beginLocation:[self convertTouch:touch]];
+	}
+}
+
+-(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event;
+{
+	for(UITouch *touch in touches){
+		[_multiGrab updateLocation:[self convertTouch:touch]];
+	}
+}
+
+-(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event;
+{
+	for(UITouch *touch in touches){
+		[_multiGrab endLocation:[self convertTouch:touch]];
+	}
+}
+
+-(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+	[self touchesEnded:touches withEvent:event];
+}
+
+- (ChipmunkSpace *)space { return _space; }
+- (void)setSpace:(ChipmunkSpace *)space
+{
+    [space retain];
+    [_space release];
+    _space = space;
+    
+    cpFloat grabForce = 1e5;
+    _multiGrab = [[ChipmunkMultiGrab alloc] initForSpace:space withSmoothing:cpfpow(0.3, 60) withGrabForce:grabForce];
+    _multiGrab.layers = GRABABLE_MASK_BIT;
+    _multiGrab.grabFriction = grabForce*0.1;
+    _multiGrab.grabRotaryFriction = 1e3;
+    _multiGrab.grabRadius = 20.0;
+    _multiGrab.pushMass = 1.0;
+    _multiGrab.pushFriction = 0.7;
+    _multiGrab.pushMode = TRUE;
+}
+
+- (void)setFrame:(CGRect)frame
+{
+    [super setFrame:frame];
+    [self setupGL];
 }
 
 @end

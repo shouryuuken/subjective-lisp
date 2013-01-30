@@ -411,8 +411,6 @@
 		8E63EC0D1663387F00E0A400 /* st.c in Sources */ = {isa = PBXBuildFile; fileRef = 8E63EBDA1663387F00E0A400 /* st.c */; };
 		8E73FEAC15662DC800978F7E /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8E73FEAB15662DC800978F7E /* OpenGLES.framework */; };
 		8E77F084165E40B000881D8F /* Accelerometer.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F077165E40B000881D8F /* Accelerometer.m */; };
-		8E77F087165E40B000881D8F /* CPDemo.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F07B165E40B000881D8F /* CPDemo.m */; };
-		8E77F088165E40B000881D8F /* CPViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F07D165E40B000881D8F /* CPViewController.m */; };
 		8E77F089165E40B000881D8F /* GLView.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F07F165E40B000881D8F /* GLView.m */; };
 		8E77F08A165E40B000881D8F /* PolyRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F081165E40B000881D8F /* PolyRenderer.m */; };
 		8E77F08B165E40B000881D8F /* ChipmunkGlue.m in Sources */ = {isa = PBXBuildFile; fileRef = 8E77F083165E40B000881D8F /* ChipmunkGlue.m */; };
@@ -1717,10 +1715,6 @@
 		8E73FEAB15662DC800978F7E /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
 		8E77F076165E40B000881D8F /* Accelerometer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Accelerometer.h; sourceTree = "<group>"; };
 		8E77F077165E40B000881D8F /* Accelerometer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Accelerometer.m; sourceTree = "<group>"; };
-		8E77F07A165E40B000881D8F /* CPDemo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CPDemo.h; sourceTree = "<group>"; };
-		8E77F07B165E40B000881D8F /* CPDemo.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CPDemo.m; sourceTree = "<group>"; };
-		8E77F07C165E40B000881D8F /* CPViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CPViewController.h; sourceTree = "<group>"; };
-		8E77F07D165E40B000881D8F /* CPViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = CPViewController.m; sourceTree = "<group>"; };
 		8E77F07E165E40B000881D8F /* GLView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GLView.h; sourceTree = "<group>"; };
 		8E77F07F165E40B000881D8F /* GLView.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GLView.m; sourceTree = "<group>"; };
 		8E77F080165E40B000881D8F /* PolyRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PolyRenderer.h; sourceTree = "<group>"; };
@@ -3670,10 +3664,6 @@
 				8E77F077165E40B000881D8F /* Accelerometer.m */,
 				8EF253CF165FC0AC00B66B21 /* AntialiasedShader.fsh */,
 				8EF253D0165FC0AC00B66B21 /* AntialiasedShader.vsh */,
-				8E77F07A165E40B000881D8F /* CPDemo.h */,
-				8E77F07B165E40B000881D8F /* CPDemo.m */,
-				8E77F07C165E40B000881D8F /* CPViewController.h */,
-				8E77F07D165E40B000881D8F /* CPViewController.m */,
 				8E77F07E165E40B000881D8F /* GLView.h */,
 				8E77F07F165E40B000881D8F /* GLView.m */,
 				8E77F080165E40B000881D8F /* PolyRenderer.h */,
@@ -4923,8 +4913,6 @@
 				8E96A5AA165CBCA5008777DA /* tile.cpp in Sources */,
 				8E96A5E5165CBCA5008777DA /* SnesView.m in Sources */,
 				8E77F084165E40B000881D8F /* Accelerometer.m in Sources */,
-				8E77F087165E40B000881D8F /* CPDemo.m in Sources */,
-				8E77F088165E40B000881D8F /* CPViewController.m in Sources */,
 				8E77F089165E40B000881D8F /* GLView.m in Sources */,
 				8E77F08A165E40B000881D8F /* PolyRenderer.m in Sources */,
 				8E77F08B165E40B000881D8F /* ChipmunkGlue.m in Sources */,
