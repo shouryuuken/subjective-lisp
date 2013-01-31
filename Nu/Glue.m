@@ -11,6 +11,8 @@
 #import <CoreText/CoreText.h>
 #include <event2/event.h>
 
+#import "ObjectiveChipmunk.h"
+
 #define M_PI   3.14159265358979323846264338327950288   
 #define DEG_TO_RADIANS(angle) (angle / 180.0 * M_PI)
 
@@ -20,6 +22,21 @@
 @end
 
 @implementation Glue
+
++ (id)chipmunkbody
+{
+    id obj;
+    obj = [ChipmunkBody bodyWithMass:INFINITY andMoment:INFINITY];
+    [obj setAngVel:0.4];
+    return obj;
+}
+
++ (id)test
+{
+    NSMutableDictionary *dict = [[[NSMutableDictionary alloc] init] autorelease];
+    [dict setValue:@"hdkslfjlk" forKey:@"arthur"];
+    return [dict arthur];
+}
 
 + (void)testEnumeration:(NuCell *)lst
 {

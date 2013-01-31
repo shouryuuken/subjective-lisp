@@ -1276,4 +1276,5 @@ int clear_symbol(NSString *name);
 - (id)curlEasySetopt:(int)opt param:(id)param;
 @end
 
+id execute_block_safely(id (^block)());
 

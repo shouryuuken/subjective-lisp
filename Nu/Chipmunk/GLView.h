@@ -16,6 +16,7 @@
 #import "ChipmunkSpace.h"
 
 #import "transform.h"
+#import "Accelerometer.h"
 
 @class EAGLContext;
 @protocol GLViewDelegate;

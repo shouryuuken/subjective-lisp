@@ -59,6 +59,9 @@ void nufn(char *name, void *fn, char *signature)
 }
 
 
+#define GRABABLE_MASK_BIT (1<<31)
+#define NOT_GRABABLE_MASK (~GRABABLE_MASK_BIT)
+
 
 @interface ChipmunkGlue : NSObject
 @end
@@ -80,7 +83,8 @@ frand_unit_circle()
 
 
 + (void)bindings
-{    
+{
+    nusym("NOT_GRABABLE_MASK", [NSNumber numberWithUnsignedLong:NOT_GRABABLE_MASK]);
     nusym("cpfinfinity", [NSNumber numberWithFloat:INFINITY]);
     nusym("cpfpi", [NSNumber numberWithFloat:M_PI]);
     nusym("cpfe", [NSNumber numberWithFloat:M_E]);
@@ -158,6 +162,7 @@ frand_unit_circle()
     nufn("cp-reset-shape-id-counter", cpResetShapeIdCounter, "v");
     
     nufn("frand", frand, "f");
+    nufn("frand-unit-circle", frand_unit_circle, "{?=ff}");
     
     nufn("cp-space-use-spatial-hash", cpSpaceUseSpatialHash, "v^vfi");
 }
@@ -165,5 +170,26 @@ frand_unit_circle()
 @end
 
 
+@implementation ChipmunkBody(Nu)
+
+static void
+PlanetGravityVelocityFunc(cpBody *body, cpVect gravity, cpFloat damping, cpFloat dt)
+{
+    // Gravitational acceleration is proportional to the inverse square of
+    // distance, and directed toward the origin. The central planet is assumed
+    // to be massive enough that it affects the satellites but not vice versa.
+    cpVect pos = cpBodyGetPos(body);
+    cpFloat sqdist = cpvlengthsq(pos);
+    cpVect g = cpvmult(pos, -5.0e6f/(sqdist*cpfsqrt(sqdist)));
+    
+    cpBodyUpdateVelocity(body, g, damping, dt);
+}
+
+- (void)setVelocityFunc:(id)block
+{
+    self.body->velocity_func = PlanetGravityVelocityFunc;
+}
+
+@end
 
 

@@ -1067,6 +1067,7 @@ NSMutableDictionary *nu_block_table = nil;
 #define MKCOORDINATEREGION_SIGNATURE "{?={?=dd}{?=dd}}"
 #define FFI_FF_SIGNATURE "{?=ff}"
 #define FFI_FFFF_SIGNATURE "{?=ffff}"
+#define FFI_CPBB_SIGNATURE "{cpBB=ffff}"
 #define CCCOLOR3B_SIGNATURE "{_ccColor3B=CCC}"
 #define CGAFFINETRANSFORM_SIGNATURE "{CGAffineTransform=ffffff}"
 
@@ -1295,7 +1296,8 @@ ffi_type *ffi_type_for_objc_type(const char *typeString)
                 return &ffi_type_ff;
             }
             else if (
-                     !strcmp(typeString, FFI_FFFF_SIGNATURE)
+                     !strcmp(typeString, FFI_FFFF_SIGNATURE) ||
+                     !strcmp(typeString, FFI_CPBB_SIGNATURE)
                      ) {
                 if (!initialized_ffi_types) initialize_ffi_types();
                 return &ffi_type_ffff;
@@ -1398,7 +1400,8 @@ size_t size_of_objc_type(const char *typeString)
                 return sizeof(float)*2;
             }
             else if (
-                     !strcmp(typeString, FFI_FFFF_SIGNATURE)
+                     !strcmp(typeString, FFI_FFFF_SIGNATURE) ||
+                     !strcmp(typeString, FFI_CPBB_SIGNATURE)
                      ) {
                 return sizeof(float)*4;
             }
@@ -1499,7 +1502,8 @@ void *value_buffer_for_objc_type(const char *typeString)
                 return malloc(sizeof(float)*2);
             }
             else if (
-                     !strcmp(typeString, FFI_FFFF_SIGNATURE)
+                     !strcmp(typeString, FFI_FFFF_SIGNATURE) ||
+                     !strcmp(typeString, FFI_CPBB_SIGNATURE)
                      ) {
                 return malloc(sizeof(float)*4);
             }
@@ -1763,7 +1767,8 @@ int set_objc_value_from_nu_value(void *objc_value, id nu_value, const char *type
                 return NO;
             }
             else if (
-                     !strcmp(typeString, FFI_FFFF_SIGNATURE)
+                     !strcmp(typeString, FFI_FFFF_SIGNATURE) ||
+                     !strcmp(typeString, FFI_CPBB_SIGNATURE)
                      ) {
                 float *val = (float *) objc_value;
                 id cursor = nu_value;
@@ -2064,7 +2069,8 @@ id get_nu_value_from_objc_value(void *objc_value, const char *typeString)
                 return nulist(nufloat(val[0]), nufloat(val[1]), nil);
             }                
             else if (
-                     !strcmp(typeString, FFI_FFFF_SIGNATURE)
+                     !strcmp(typeString, FFI_FFFF_SIGNATURE) ||
+                     !strcmp(typeString, FFI_CPBB_SIGNATURE)
                      ) {
                 float *val = (float *) objc_value;
                 return nulist(nufloat(val[0]), nufloat(val[1]), nufloat(val[2]), nufloat(val[3]), nil);
@@ -5049,6 +5055,19 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
         }
     }
 #endif
+    
+    id result = [[message car] evalWithContext:context];
+    if (nu_objectIsKindOfClass(result, [NSDictionary class])) {
+        NSLog(@"setValuesForKeysWithDictionary: %@", result);
+        [self setValuesForKeysWithDictionary:result];
+        return self;
+    }
+    if (nu_valueIsNull(result)) {
+        NSLog(@"ignoring message nil");
+        return self;
+    }
+    
+    
     NuCell *cell = [[[NuCell alloc] init] autorelease];
     [cell setCar:self];
     [cell setCdr:message];

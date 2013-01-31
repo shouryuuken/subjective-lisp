@@ -295,6 +295,40 @@ id nu_trues(id enumerable, id block, Class class)
 
 @implementation NuCell
 
+- (CGPoint)pointValue
+{
+    if ([self count] != 2)
+        return CGPointMake(0.0, 0.0);
+    return CGPointMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
+}
+
+- (NSRange)rangeValue
+{
+    NSRange r;
+    if ([self count] != 2) {
+        r.length = 0;
+        r.location = 0;
+        return r;
+    }
+    r.length = [[self objectAtIndex:0] unsignedIntegerValue];
+    r.location = [[self objectAtIndex:1] unsignedIntegerValue];
+    return r;
+}
+
+- (CGRect)rectValue
+{
+    if ([self count] != 4)
+        return CGRectMake(0.0, 0.0, 0.0, 0.0);
+    return CGRectMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue], [[self objectAtIndex:2] floatValue], [[self objectAtIndex:3] floatValue]);
+}
+
+- (CGSize)sizeValue
+{
+    if ([self count] != 2)
+        return CGSizeMake(0.0, 0.0);
+    return CGSizeMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
+}
+
 - (NSUInteger)countByEnumeratingWithState:(NSFastEnumerationState *)state objects:(id [])buffer count:(NSUInteger)len
 {
     NuCell **ptr = &state->extra[1];
@@ -849,6 +883,40 @@ id nu_trues(id enumerable, id block, Class class)
 
 @implementation NSArray(Nu)
 
+- (CGPoint)pointValue
+{
+    if ([self count] != 2)
+        return CGPointMake(0.0, 0.0);
+    return CGPointMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
+}
+
+- (NSRange)rangeValue
+{
+    NSRange r;
+    if ([self count] != 2) {
+        r.length = 0;
+        r.location = 0;
+        return r;
+    }
+    r.length = [[self objectAtIndex:0] unsignedIntegerValue];
+    r.location = [[self objectAtIndex:1] unsignedIntegerValue];
+    return r;
+}
+
+- (CGRect)rectValue
+{
+    if ([self count] != 4)
+        return CGRectMake(0.0, 0.0, 0.0, 0.0);
+    return CGRectMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue], [[self objectAtIndex:2] floatValue], [[self objectAtIndex:3] floatValue]);
+}
+
+- (CGSize)sizeValue
+{
+    if ([self count] != 2)
+        return CGSizeMake(0.0, 0.0);
+    return CGSizeMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
+}
+
 - (id)superDescription { return [super description]; }
 
 - (id)array { return self; }
@@ -1248,8 +1316,9 @@ int strchrcount(char *str, char c)
         return signature;
     char *name = (char *)sel_getName(selector);
     id obj = [self objectForKey:[NSString stringWithUTF8String:name]];
-    if (!obj)
+    if (!obj) {
         return nil;
+    }
     if (nu_objectIsKindOfClass(obj, [NuImp class])) {
         return [obj methodSignature];
     }
@@ -1262,8 +1331,26 @@ int strchrcount(char *str, char c)
     return [NSMethodSignature signatureWithObjCTypes:[str cStringUsingEncoding:NSUTF8StringEncoding]];
 }
 
+id execute_block_safely(id (^block)())
+{
+    id result = nil;
+    @try {
+        result = block();
+    }
+    @catch (NuException* nuException) {
+        prn([NSString stringWithFormat:@"%s", [[nuException dump] cStringUsingEncoding:NSUTF8StringEncoding]]);
+    }
+    @catch (id exception) {
+        prn([NSString stringWithFormat:@"%s: %s",
+             [[exception name] cStringUsingEncoding:NSUTF8StringEncoding],
+             [[exception reason] cStringUsingEncoding:NSUTF8StringEncoding]]);
+    }
+    return result;
+}
+
 - (void)forwardInvocation:(NSInvocation *)invocation
 {
+    NSLog(@"forwardInvocation %@", invocation);
     NSMethodSignature *signature = [invocation methodSignature];
     int argc = [signature numberOfArguments];
     NSString *name = [NSString stringWithUTF8String:sel_getName([invocation selector])];
@@ -1284,7 +1371,7 @@ int strchrcount(char *str, char c)
             if (!head)
                 head = tail;
         }
-        id result = [block evalWithArguments:head];
+        id result = execute_block_safely(^(void) { return [block evalWithArguments:head]; });
         id returnvalue = nil;
         set_objc_value_from_nu_value(&returnvalue, result, [signature methodReturnType]);        
         [invocation setReturnValue:&returnvalue];
@@ -1299,7 +1386,7 @@ int strchrcount(char *str, char c)
         if (!head)
             head = tail;
     }
-    id result = [obj evalWithArguments:head];
+    id result = execute_block_safely(^(void) { return [obj evalWithArguments:head]; });
     [invocation setReturnValue:&result];
 }
 
@@ -1908,4 +1995,21 @@ NSString *evhttp_objc_string(char *buf)
 }
 
 - (NSString *)stringValue { return [self description]; }
+@end
+
+@implementation UITableView(Nu)
+
+- (id)data
+{
+    return [self valueForIvar:@"data"];
+}
+
+- (void)setData:(id)data
+{
+    [self setValue:data forIvar:@"data"];
+    [self setDataSource:data];
+    [self setDelegate:data];
+    [self reloadData];
+}
+
 @end

@@ -105,13 +105,6 @@ ColorFromHash(cpHashValue hash, float alpha)
 
 // TODO add optional line and fill modes?
 @implementation ChipmunkCircleShape(DemoRenderer)
-
--(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
-{
-	cpVect pos = cpvadd(self.body.body->p, cpvmult(self.body.body->v, dt));
-    [renderer drawDot:pos radius:4.0 color:SHAPE_OUTLINE_COLOR];
-}
-/*
 -(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
 {
 	cpVect offset = self.offset;
@@ -126,9 +119,18 @@ ColorFromHash(cpHashValue hash, float alpha)
 	if(r2 > 0.0) [renderer drawDot:pos radius:r2 color:self.color];
 	[renderer drawSegmentFrom:pos to:end radius:SHAPE_OUTLINE_WIDTH color:SHAPE_OUTLINE_COLOR];
 }
-*/
+
 @end
 
+@interface ChipmunkCircleDotShape : ChipmunkCircleShape
+@end
+@implementation ChipmunkCircleDotShape
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+    cpVect pos = cpvadd(self.body.body->p, cpvmult(self.body.body->v, dt));
+    [renderer drawDot:pos radius:4.0 color:SHAPE_OUTLINE_COLOR];
+}
+@end
 
 @implementation ChipmunkSegmentShape(DemoRenderer)
 

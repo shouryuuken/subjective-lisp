@@ -14,6 +14,8 @@
 
 #import <objc/runtime.h>
 
+#import "Nu.h"
+
 #define GRABABLE_MASK_BIT (1<<31)
 #define NOT_GRABABLE_MASK (~GRABABLE_MASK_BIT)
 
@@ -190,14 +192,6 @@
 		
 		layer.contentsScale = [UIScreen mainScreen].scale;
 
-        // Add a nice shadow.
-        self.layer.shadowColor = [UIColor blackColor].CGColor;
-        self.layer.shadowOpacity = 1.0f;
-        self.layer.shadowOffset = CGSizeZero;
-        self.layer.shadowRadius = 15.0;
-        self.layer.masksToBounds = NO;
-        self.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
-
 		_renderQueue = dispatch_queue_create("net.chipmunk-physics.showcase-renderqueue", NULL);
 		
         _context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
@@ -221,8 +215,8 @@
 -(void)dealloc
 {
     NSLog(@"GLView dealloc %p", self);
-	[_displayLink invalidate];
-	_displayLink = nil;
+	[self.displayLink invalidate];
+	self.displayLink = nil;
 
     [self tearDownGL];
     
@@ -263,8 +257,13 @@
     if (!_space)
         return;
     
-	NSTimeInterval time = _displayLink.timestamp;
+	NSTimeInterval time = displayLink.timestamp;
 	
+//    self.space.gravity = cpvmult([Accelerometer getAcceleration], 600);
+    id step_func = [_space valueForIvar:@"step-func"];
+    if (step_func) {
+        execute_block_safely(^{ return [step_func evalWithArguments:nulist([NSNumber numberWithFloat:_timeStep], nil)]; });
+    }
     [_space step:_timeStep];
 	
 	BOOL needs_sync = (time - _lastFrameTime > MAX_DT);
@@ -275,9 +274,9 @@
             [shape drawWithRenderer:_renderer dt:_timeStep];
         }
         
-        /*	for(ChipmunkConstraint *constraint in _space.constraints){
-         [constraint drawWithRenderer:renderer dt:_accumulator];
-         }*/
+        	for(ChipmunkConstraint *constraint in _space.constraints){
+         [constraint drawWithRenderer:_renderer dt:_timeStep];
+         }
         
 		
 		[self display:^{
@@ -346,5 +345,15 @@
     [super setFrame:frame];
     [self setupGL];
 }
+
+@end
+
+@implementation ChipmunkSpace(Nu)
+- (id)addWithBody:(id)obj
+{
+    [self add:[obj body]];
+    return [self add:obj];
+}
+
 
 @end
