@@ -260,11 +260,12 @@
 	NSTimeInterval time = displayLink.timestamp;
 	
 //    self.space.gravity = cpvmult([Accelerometer getAcceleration], 600);
-    id step_func = [_space valueForIvar:@"step-func"];
-    if (step_func) {
+    id step_func = [_space valueForIvar:@"step:"];
+    if (!nu_valueIsNull(step_func)) {
         execute_block_safely(^{ return [step_func evalWithArguments:nulist([NSNumber numberWithFloat:_timeStep], nil)]; });
+    } else {
+        [_space step:_timeStep];
     }
-    [_space step:_timeStep];
 	
 	BOOL needs_sync = (time - _lastFrameTime > MAX_DT);
 	if(!self.isRendering || needs_sync){
@@ -348,12 +349,3 @@
 
 @end
 
-@implementation ChipmunkSpace(Nu)
-- (id)addWithBody:(id)obj
-{
-    [self add:[obj body]];
-    return [self add:obj];
-}
-
-
-@end

@@ -15,7 +15,6 @@
 
 
 #import "Nu.h"
-#import "ObjectiveChipmunk.h"
 
 /*
  NuCell *make_nu_list(id obj, ...)
@@ -81,6 +80,25 @@ frand_unit_circle()
 	return (cpvlengthsq(v) < 1.0f ? v : frand_unit_circle());
 }
 
+cpVect *new_cpvect_array(id lst)
+{
+    int n = [lst count];
+    cpVect *buf = malloc(n * sizeof(cpVect));
+    for(int i=0; i<n; i++) {
+        buf[i] = [[lst objectAtIndex:i] cpVectValue];
+    }
+    return buf;
+}
+
+//cpFloat cpMomentForPoly(cpFloat m, int numVerts, const cpVect *verts, cpVect offset)
+cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
+{
+    int nverts = [verts count];
+    cpVect *verts_buf = new_cpvect_array(verts);
+    cpFloat result = cpMomentForPoly(m, nverts, verts_buf, offset);
+    free(verts_buf);
+    return result;
+}
 
 + (void)bindings
 {
@@ -150,8 +168,7 @@ frand_unit_circle()
         
     nufn("cp-moment-for-circle", cpMomentForCircle, "ffff{?=ff}");
     nufn("cp-moment-for-segment", cpMomentForSegment, "ff{?=ff}{?=ff}");
-//    nufn("cp-moment-for-poly", cpMomentForPoly, "ff
-//cpFloat cpMomentForPoly(cpFloat m, int numVerts, const cpVect *verts, cpVect offset)
+    nufn("cp-moment-for-poly", cpMomentForPolyHelper, "ff@{?=ff}");
     nufn("cp-moment-for-box", cpMomentForBox, "ffff");
 
     nufn("cp-area-for-circle", cpAreaForCircle, "fff");
@@ -164,13 +181,60 @@ frand_unit_circle()
     nufn("frand", frand, "f");
     nufn("frand-unit-circle", frand_unit_circle, "{?=ff}");
     
-    nufn("cp-space-use-spatial-hash", cpSpaceUseSpatialHash, "v^vfi");
+}
+
+@end
+
+@implementation ChipmunkSpace(Nu)
+
+- (void)useSpatialHash:(cpFloat)dim count:(int)count
+{
+    cpSpaceUseSpatialHash(self.space, dim, count);
+}
+
+- (id) handleUnknownMessage:(NuCell *)cdr withContext:(NSMutableDictionary *)context
+{
+    for (id obj in cdr) {
+        id result = [obj evalWithContext:context];
+        if (result)
+            [self add:result];
+    }
+    return cdr;
 }
 
 @end
 
 
 @implementation ChipmunkBody(Nu)
+
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"mass"];
+    cpFloat mass = (obj) ? [obj floatValue] : INFINITY;
+    obj = [prop consumeKey:@"moment"];
+    cpFloat moment = (obj) ? [obj floatValue] : INFINITY;
+    obj = [self bodyWithMass:mass andMoment:moment];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+
+static void
+cpBodyVelocityFuncHelper(cpBody *_body, cpVect gravity, cpFloat damping, cpFloat dt)
+{
+    ChipmunkBody *body = _body->data;
+    id block = [body valueForIvar:@"velocityFunc"];
+    if (!block)
+        return;
+    execute_block_safely(^{
+        return [block evalWithArguments:nulist(
+            body,
+            nulist(get_symbol_value(@"list"), [NSNumber numberWithFloat:gravity.x], [NSNumber numberWithFloat:gravity.y], nil),
+                                        [NSNumber numberWithFloat:damping],
+                                        [NSNumber numberWithFloat:dt],
+                                        nil)];
+    });
+}
 
 static void
 PlanetGravityVelocityFunc(cpBody *body, cpVect gravity, cpFloat damping, cpFloat dt)
@@ -180,16 +244,218 @@ PlanetGravityVelocityFunc(cpBody *body, cpVect gravity, cpFloat damping, cpFloat
     // to be massive enough that it affects the satellites but not vice versa.
     cpVect pos = cpBodyGetPos(body);
     cpFloat sqdist = cpvlengthsq(pos);
-    cpVect g = cpvmult(pos, -5.0e6f/(sqdist*cpfsqrt(sqdist)));
+    cpVect g = cpvmult(pos, -5.0e6/(sqdist*cpfsqrt(sqdist)));
     
     cpBodyUpdateVelocity(body, g, damping, dt);
 }
 
-- (void)setVelocityFunc:(id)block
+- (void)setVelocityFunc:(id)obj
 {
-    self.body->velocity_func = PlanetGravityVelocityFunc;
+    if (nu_objectIsKindOfClass(obj, [NuBlock class])) {
+        [self setValue:obj forIvar:@"velocityFunc"];
+        self.body->velocity_func = cpBodyVelocityFuncHelper;
+    } else if ([obj isEqual:@"PlanetGravityVelocityFunc"]) {
+        self.body->velocity_func = PlanetGravityVelocityFunc;
+    } else {
+        self.body->velocity_func = cpBodyUpdateVelocity;
+    }
+}
+
+- (void)updateVelocity:(cpVect)gravity damping:(cpFloat)damping dt:(cpFloat)dt
+{
+    cpBodyUpdateVelocity([self body], gravity, damping, dt);
 }
 
 @end
 
+@implementation ChipmunkCircleShape(Nu)
 
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"body"];
+    if (!obj)
+        return nil;
+    id body = obj;
+    obj = [prop consumeKey:@"radius"];
+    cpFloat radius = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"offset"];
+    cpVect offset = (obj) ? [obj cpVectValue] : cpv(0.0, 0.0);
+    obj = [self circleWithBody:body radius:radius offset:offset];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+
+@end
+@implementation ChipmunkPolyShape(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    if ([prop valueForKey:@"body"] && [prop valueForKey:@"width"] && [prop valueForKey:@"height"]) {
+        id body = [prop consumeKey:@"body"];
+        cpFloat width = [[prop consumeKey:@"width"] floatValue];
+        cpFloat height = [[prop consumeKey:@"height"] floatValue];
+        id obj = [self boxWithBody:body width:width height:height];
+        [obj setValuesForKeysWithDictionary:prop];
+        return obj;
+    }
+    if ([prop valueForKey:@"body"] && [prop valueForKey:@"bb"]) {
+        id body = [prop consumeKey:@"body"];
+        cpBB bb = [[prop consumeKey:@"bb"] cpBBValue];
+        id obj = [self boxWithBody:body bb:bb];
+        [obj setValuesForKeysWithDictionary:prop];
+        return obj;
+    }
+    if ([prop valueForKey:@"body"] && [prop valueForKey:@"verts"]) {
+        id body = [prop consumeKey:@"body"];
+        id verts = [prop consumeKey:@"verts"];
+        cpVect offset = [[prop consumeKey:@"offset"] cpVectValue];
+        int nverts = [verts count];
+        cpVect *verts_buf = new_cpvect_array(verts);
+        id obj = [self polyWithBody:body count:nverts verts:verts_buf offset:offset];
+        free(verts_buf);
+        [obj setValuesForKeysWithDictionary:prop];
+        return obj;
+    }
+    return nil;
+}
+@end
+
+@implementation ChipmunkSegmentShape(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"body"];
+    if (!obj)
+        return nil;
+    id body = obj;
+    obj = [prop consumeKey:@"from"];
+    cpVect from = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"to"];
+    cpVect to = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"radius"];
+    cpFloat radius = (obj) ? [obj floatValue] : 0.0;
+    obj = [self segmentWithBody:body from:from to:to radius:radius];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkRotaryLimitJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"min"];
+    cpFloat min = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"max"];
+    cpFloat max = (obj) ? [obj floatValue] : 0.0;
+    obj = [self rotaryLimitJointWithBodyA:a bodyB:b min:min max:max];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkPivotJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    if ([prop valueForKey:@"a"] && [prop valueForKey:@"b"] && [prop valueForKey:@"pivot"]) {
+        id a = [prop consumeKey:@"a"];
+        id b = [prop consumeKey:@"b"];
+        cpVect pivot = [[prop consumeKey:@"pivot"] cpVectValue];
+        id obj = [self pivotJointWithBodyA:a bodyB:b pivot:pivot];
+        [obj setValuesForKeysWithDictionary:prop];
+        return obj;
+    }
+    if ([prop valueForKey:@"a"] && [prop valueForKey:@"b"] && [prop valueForKey:@"anchr1"] && [prop valueForKey:@"anchr2"]) {
+        id a = [prop consumeKey:@"a"];
+        id b = [prop consumeKey:@"b"];
+        cpVect anchr1 = [[prop consumeKey:@"anchr1"] cpVectValue];
+        cpVect anchr2 = [[prop consumeKey:@"anchr2"] cpVectValue];
+        id obj = [self pivotJointWithBodyA:a bodyB:b anchr1:anchr1 anchr2:anchr2];
+        [obj setValuesForKeysWithDictionary:prop];
+        return obj;
+    }
+    return nil;
+}
+@end
+
+@implementation ChipmunkDampedSpring(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"anchr1"];
+    cpVect anchr1 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"anchr2"];
+    cpVect anchr2 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"restLength"];
+    cpFloat restLength = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"stiffness"];
+    cpFloat stiffness = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"damping"];
+    cpFloat damping = (obj) ? [obj floatValue] : 0.0;
+    obj = [self dampedSpringWithBodyA:a bodyB:b anchr1:anchr1 anchr2:anchr2 restLength:restLength stiffness:stiffness damping:damping];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkPinJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"anchr1"];
+    cpVect anchr1 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"anchr2"];
+    cpVect anchr2 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [self pinJointWithBodyA:a bodyB:b anchr1:anchr1 anchr2:anchr2];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkGearJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"phase"];
+    cpFloat phase = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"ratio"];
+    cpFloat ratio = (obj) ? [obj floatValue] : 0.0;
+    obj = [self gearJointWithBodyA:a bodyB:b phase:phase ratio:ratio];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end

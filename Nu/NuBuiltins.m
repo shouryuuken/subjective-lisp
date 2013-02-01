@@ -11,6 +11,8 @@
 #import "cocos2d.h"
 #include <sys/utsname.h>
 
+@class ChipmunkGlue;
+
 @interface Nu_car_operator : NuOperator {}
 @end
 
@@ -1709,7 +1711,7 @@
 
 @end
 
-static id evaluatedArguments(id cdr, NSMutableDictionary *context)
+id evaluatedArguments(id cdr, NSMutableDictionary *context)
 {
     NuCell *evaluatedArguments = nil;
     id cursor = cdr;
@@ -2014,6 +2016,7 @@ void load_builtins()
 #include "builtin_enum.c"
 #include "builtin_curl.c"
     
+    install_builtin(@"math", @"RAND_MAX", [NSNumber numberWithUnsignedLong:RAND_MAX]);
     install_builtin(@"math", @"INFINITY", [NSNumber numberWithFloat:INFINITY]);
     install_builtin(@"math", @"M_PI", [NSNumber numberWithDouble:M_PI]);
     install_builtin(@"math", @"M_PI_2", [NSNumber numberWithDouble:M_PI_2]);
@@ -2058,6 +2061,8 @@ void load_builtins()
 #include "builtin_func.c"
 #include "builtin_boot.c"
 #include "builtin_rom.c"
+    
+    [ChipmunkGlue bindings];
 }
 
 @implementation PCRE

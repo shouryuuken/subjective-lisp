@@ -4951,12 +4951,21 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
     return [self sendMessage:cdr withContext:context];
 }
 
-+ (id) handleUnknownMessage:(id) cdr withContext:(NSMutableDictionary *) context
++ (id)objectWithProperties:(NSDictionary *)prop
 {
-    [NSException raise:@"NuUnknownMessage"
-                format:@"unable to find message handler for %@",
-     [cdr stringValue]];
-    return Nu__null;
+    id obj;
+    obj = [[[self alloc] init] autorelease];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+
++ (id)handleUnknownMessage:(id)cdr withContext:(NSMutableDictionary *)context
+{
+    id args = evaluatedArguments(cdr, context);
+    id dict = (!nu_valueIsNull(args) && nu_objectIsKindOfClass([args car], [NSDictionary class]))
+        ? [args car]
+        : [NSDictionary dictionaryWithList:evaluatedArguments(cdr, context)];
+    return [self objectWithProperties:dict];
 }
 
 

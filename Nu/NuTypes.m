@@ -1,5 +1,6 @@
 #import "Nu.h"
 #include <event2/http.h>
+#import "ObjectiveChipmunk.h"
 
 id nu_map(id enumerable, id block, Class class)
 {
@@ -294,6 +295,20 @@ id nu_trues(id enumerable, id block, Class class)
 @end
 
 @implementation NuCell
+
+- (cpBB)cpBBValue
+{
+    if ([self count] != 4)
+        return cpBBNew(0.0, 0.0, 0.0, 0.0);
+    return cpBBNew([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue], [[self objectAtIndex:2] floatValue], [[self objectAtIndex:3] floatValue]);
+}
+
+- (cpVect)cpVectValue
+{
+    if ([self count] != 2)
+        return cpv(0.0, 0.0);
+    return cpv([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
+}
 
 - (CGPoint)pointValue
 {
@@ -1183,7 +1198,7 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
     return arr;
 }
 
-+ (NSDictionary *) dictionaryWithList:(id) list
++ (NSDictionary *)dictionaryWithList:(id)list
 {
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     id cursor = list;
@@ -1393,6 +1408,18 @@ id execute_block_safely(id (^block)())
 @end
 
 @implementation NSMutableDictionary(Nu)
+
+- (id)consumeKey:(NSString *)key
+{
+    id val = [self valueForKey:key];
+    if (val) {
+        [val retain];
+        [self removeObjectForKey:key];
+        [val autorelease];
+    }
+    return val;
+}
+
 - (id) lookupObjectForKey:(id)key
 {
     id object = [self objectForKey:key];
@@ -1860,6 +1887,18 @@ NSString *evhttp_objc_string(char *buf)
 @end
 
 @implementation NSNumber(Nu)
+
+- (id)listTo:(int)end
+{
+    int start = [self intValue];
+    id head = nil, tail = nil;
+    for(int i=start; i<=end; i++) {
+        tail = nucons1(tail, nuint(i));
+        if (!head)
+            head = tail;
+    }
+    return head;
+}
 
 - (id) times:(id) block
 {

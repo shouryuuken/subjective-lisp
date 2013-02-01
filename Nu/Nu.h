@@ -31,6 +31,7 @@
 
 #include "pcre.h"
 #include "curl.h"
+#import "ObjectiveChipmunk.h"
 
 #define NU_VERSION_MAJOR 0
 #define NU_VERSION_MINOR 0
@@ -116,6 +117,9 @@ extern NuSymbolTable *sharedSymbolTable;
  In Nu, nil is represented with the <code>[NSNull null]</code> object.
  */
 @interface NuCell : NSObject <NSCoding, NSFastEnumeration>
+
+- (cpBB)cpBBValue;
+- (cpVect)cpVectValue;
 
 /*! Create a new cell with a specifed car and cdr. */
 + (id) cellWithCar:(id)car cdr:(id)cdr;
@@ -918,6 +922,7 @@ extern NuSymbolTable *sharedSymbolTable;
  assigned values.
  */
 @interface NSMutableDictionary(Nu)
+- (id)consumeKey:(NSString *)key;
 /*! Looks up the value associated with a key in the current context.
  If no value is found, looks in the context's parent, continuing
  upward until no more parent contexts are found. */
@@ -1278,3 +1283,4 @@ int clear_symbol(NSString *name);
 
 id execute_block_safely(id (^block)());
 
+id evaluatedArguments(id cdr, NSMutableDictionary *context);
