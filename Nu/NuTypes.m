@@ -296,6 +296,35 @@ id nu_trues(id enumerable, id block, Class class)
 
 @implementation NuCell
 
+- (CGFloat)x
+{
+    return [car floatValue];
+}
+
+- (CGFloat)y
+{
+    id obj = [self nth:1];
+    return (nu_valueIsNull(obj)) ? 0.0 : [obj floatValue];
+}
+
+- (CGFloat)w
+{
+    if ([self count] < 4) {
+        return [self x];
+    }
+    id obj = [self nth:2];
+    return (nu_valueIsNull(obj)) ? 0.0 : [obj floatValue];
+}
+
+- (CGFloat)h
+{
+    if ([self count] < 4) {
+        return [self y];
+    }
+    id obj = [self nth:3];
+    return (nu_valueIsNull(obj)) ? 0.0 : [obj floatValue];
+}
+
 - (cpBB)cpBBValue
 {
     if ([self count] != 4)
@@ -467,14 +496,13 @@ id nu_trues(id enumerable, id block, Class class)
 - (id) nth:(int) n
 {
     if (n < 1)
-        return Nu__null;
-    if (n == 1)
-        return car;
-    id cursor = cdr;
-    int i;
-    for (i = 2; i < n; i++) {
+        return nil;
+    id cursor = self;
+    for(int i=0; i<n; i++) {
         cursor = [cursor cdr];
-        if (cursor == Nu__null) return nil;
+        if (nu_valueIsNull(cursor)) {
+            return nil;
+        }
     }
     return [cursor car];
 }
@@ -606,7 +634,9 @@ id nu_trues(id enumerable, id block, Class class)
         // to improve error reporting, add the currently-evaluating expression to the context
         [context setObject:self forKey:[[NuSymbolTable sharedSymbolTable] symbolWithString:@"_expression"]];
         
+        
         result = [value evalWithArguments:cdr context:context];
+        [context setPossiblyNullObject:result forKey:[[NuSymbolTable sharedSymbolTable] symbolWithString:@"_"]];
         
         if (NU_LIST_EVAL_END_ENABLED()) {
             if ((self->line != -1) && (self->file)) {
@@ -897,6 +927,11 @@ id nu_trues(id enumerable, id block, Class class)
 
 
 @implementation NSArray(Nu)
+
+- (id)valueForUndefinedKey:(NSString *)key
+{
+    return [NSString stringWithFormat:@"hey undefined key: %@", key];
+}
 
 - (CGPoint)pointValue
 {
@@ -1888,7 +1923,7 @@ NSString *evhttp_objc_string(char *buf)
 
 @implementation NSNumber(Nu)
 
-- (id)listTo:(int)end
+- (id)listToIncluding:(int)end
 {
     int start = [self intValue];
     id head = nil, tail = nil;
@@ -1899,6 +1934,8 @@ NSString *evhttp_objc_string(char *buf)
     }
     return head;
 }
+- (id)listTo:(int)end { return [self listToIncluding:end]; }
+- (id)listToExcluding:(int)end { return [self listToIncluding:end-1]; }
 
 - (id) times:(id) block
 {
@@ -1962,18 +1999,19 @@ NSString *evhttp_objc_string(char *buf)
     return self;
 }
 
-- (id) upTo:(id) number do:(id) block
+- (id)upToExcluding:(id) number block:(id) block
 {
+    id result = nil;
     int startValue = [self intValue];
     int finalValue = [number intValue];
     id args = [[NuCell alloc] init];
     if (nu_objectIsKindOfClass(block, [NuBlock class])) {
         int i;
-        for (i = startValue; i <= finalValue; i++) {
+        for (i = startValue; i < finalValue; i++) {
             @try
             {
                 [args setCar:[NSNumber numberWithInt:i]];
-                [block evalWithArguments:args context:Nu__null];
+                result = [block evalWithArguments:args context:Nu__null];
             }
             @catch (NuBreakException *exception) {
                 break;
@@ -1987,7 +2025,17 @@ NSString *evhttp_objc_string(char *buf)
         }
     }
     [args release];
-    return self;
+    return result;
+}
+
+- (id)upToIncluding:(id)number block:(id)block
+{
+    return [self upToExclusive:[NSNumber numberWithInt:[number intValue]+1] block:block];
+}
+
+- (id)upTo:(id)number block:(id)block
+{
+    return [self upToExclusive:number block:block];
 }
 
 - (NSString *) hexValue
@@ -2036,7 +2084,31 @@ NSString *evhttp_objc_string(char *buf)
 - (NSString *)stringValue { return [self description]; }
 @end
 
+
+@implementation UIView(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"frame"];
+    CGRect frame = (obj) ? [obj rectValue] : CGRectZero;
+    obj = [[[self alloc] initWithFrame:frame] autorelease];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;    
+}
+@end
+
 @implementation UITableView(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"frame"];
+    CGRect frame = (obj) ? [obj rectValue] : CGRectZero;
+    obj = [prop consumeKey:@"style"];
+    UITableViewStyle style = (obj) ? [obj intValue] : UITableViewStylePlain;
+    obj = [[[self alloc] initWithFrame:frame style:style] autorelease];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
 
 - (id)data
 {

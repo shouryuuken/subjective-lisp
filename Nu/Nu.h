@@ -118,6 +118,7 @@ extern NuSymbolTable *sharedSymbolTable;
  */
 @interface NuCell : NSObject <NSCoding, NSFastEnumeration>
 
+- (id) nth:(int) n;
 - (cpBB)cpBBValue;
 - (cpVect)cpVectValue;
 

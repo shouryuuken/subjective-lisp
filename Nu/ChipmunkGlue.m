@@ -15,6 +15,7 @@
 
 
 #import "Nu.h"
+#import "chipmunk_unsafe.h"
 
 /*
  NuCell *make_nu_list(id obj, ...)
@@ -102,6 +103,7 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
 
 + (void)bindings
 {
+    nusym("GRABABLE_MASK_BIT", [NSNumber numberWithUnsignedInt:GRABABLE_MASK_BIT]);
     nusym("NOT_GRABABLE_MASK", [NSNumber numberWithUnsignedLong:NOT_GRABABLE_MASK]);
     nusym("cpfinfinity", [NSNumber numberWithFloat:INFINITY]);
     nusym("cpfpi", [NSNumber numberWithFloat:M_PI]);
@@ -202,6 +204,61 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
     return cdr;
 }
 
+- (id)touchesDelegate
+{
+    return [self valueForIvar:@"touchesDelegate"];
+}
+
+- (void)setTouchesDelegate:(id)obj
+{
+    [self setValue:obj forIvar:@"touchesDelegate"];
+}
+
+- (id)callCollisionDelegate:(NSString *)key arbiter:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
+{
+    CP_ARBITER_GET_SHAPES(arbiter, aa, bb);
+    id a = aa->data;
+    id b = bb->data;
+    id typea = [a collisionType];
+    id typeb = [b collisionType];
+    id collisionDelegate = [typea valueForIvar:@"collisionDelegate"];
+    id delegate = [collisionDelegate valueForKey:(NSString *)typeb];
+    id block = [delegate valueForKey:key];
+    if (!nu_valueIsNull(block)) {
+        return execute_block_safely(^{
+            return [block evalWithArguments:nulist(space, a, b, nil)];
+        });
+    }
+    return nil;
+}
+
+- (bool)collisionBegin:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
+{
+    id result = [self callCollisionDelegate:@"begin" arbiter:arbiter space:space];
+    return (nu_valueIsNull(result)) ? FALSE : TRUE;
+}
+
+- (bool)collisionPreSolve:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
+{
+    id result = [self callCollisionDelegate:@"pre" arbiter:arbiter space:space];
+    return (nu_valueIsNull(result)) ? FALSE : TRUE;
+}
+
+- (void)collisionPostSolve:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
+{
+    [self callCollisionDelegate:@"post" arbiter:arbiter space:space];
+}
+
+- (void)collisionSeparate:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
+{
+    [self callCollisionDelegate:@"separate" arbiter:arbiter space:space];
+}
+
+- (void)addCollisionDelegateA:(id)a b:(id)b
+{
+    [self addCollisionHandler:self typeA:a typeB:b begin:@selector(collisionBegin:space:) preSolve:@selector(collisionPreSolve:space:) postSolve:@selector(collisionPostSolve:space:) separate:@selector(collisionSeparate:space:)];
+}
+
 @end
 
 
@@ -284,6 +341,11 @@ PlanetGravityVelocityFunc(cpBody *body, cpVect gravity, cpFloat damping, cpFloat
     obj = [self circleWithBody:body radius:radius offset:offset];
     [obj setValuesForKeysWithDictionary:prop];
     return obj;
+}
+
+- (void)unsafeSetRadius:(cpFloat)radius
+{
+                        cpCircleShapeSetRadius(self.shape, radius);
 }
 
 @end
@@ -458,4 +520,135 @@ PlanetGravityVelocityFunc(cpBody *body, cpVect gravity, cpFloat damping, cpFloat
     [obj setValuesForKeysWithDictionary:prop];
     return obj;
 }
+@end
+
+@implementation ChipmunkGrooveJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"start"];
+    cpVect start = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"end"];
+    cpVect end = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"anchr2"];
+    cpVect anchr2 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [self grooveJointWithBodyA:a bodyB:b groove_a:start groove_b:end anchr2:anchr2];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkSlideJoint(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"a"];
+    if (!obj)
+        return nil;
+    id a = obj;
+    obj = [prop consumeKey:@"b"];
+    if (!obj)
+        return nil;
+    id b = obj;
+    obj = [prop consumeKey:@"anchr1"];
+    cpVect anchr1 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"anchr2"];
+    cpVect anchr2 = (obj) ? [obj cpVectValue] : cpvzero;
+    obj = [prop consumeKey:@"min"];
+    cpFloat min = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"max"];
+    cpFloat max = (obj) ? [obj floatValue] : INFINITY;
+    obj = [self slideJointWithBodyA:a bodyB:b anchr1:anchr1 anchr2:anchr2 min:min max:max];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkMultiGrab(Nu)
++ (id)objectWithProperties:(NSDictionary *)dict
+{
+    NSMutableDictionary *prop = [dict mutableCopy];
+    id obj = [prop consumeKey:@"space"];
+    if (!obj)
+        return nil;
+    id space = obj;
+    obj = [prop consumeKey:@"smoothing"];
+    cpFloat smoothing = (obj) ? [obj floatValue] : 0.0;
+    obj = [prop consumeKey:@"grabForce"];
+    cpFloat grabForce = (obj) ? [obj floatValue] : 0.0;
+    obj = [[[self alloc] initForSpace:space withSmoothing:smoothing withGrabForce:grabForce] autorelease];
+    [obj setValuesForKeysWithDictionary:prop];
+    return obj;
+}
+@end
+
+@implementation ChipmunkConstraint(Nu)
+
+static void
+cpConstraintPreSolveFuncHelper(cpConstraint *_constraint, cpSpace *_space)
+{
+    ChipmunkConstraint *constraint = _constraint->data;
+    id block = [constraint valueForIvar:@"preSolveFunc"];
+    if (!block)
+        return;
+    execute_block_safely(^{
+        return [block evalWithArguments:nulist(constraint, _space->data, nil)];
+    });
+}
+
+
+static void
+cpConstraintPostSolveFuncHelper(cpConstraint *_constraint, cpSpace *_space)
+{
+    static id cached = nil;
+    if (!_constraint) {
+        cached = nil;
+        return;
+    }
+    ChipmunkConstraint *constraint = _constraint->data;
+    if (!cached) {
+        id block = [constraint valueForIvar:@"postSolveFunc"];
+        if (nu_valueIsNull(block))
+            return;
+        cached = block;
+    }
+    execute_block_safely(^{
+        return [cached evalWithArguments:nulist(constraint, _space->data, nil)];
+    });
+}
+
+- (void)setPreSolveFunc:(id)obj
+{
+    if (nu_objectIsKindOfClass(obj, [NuBlock class])) {
+        [self setValue:obj forIvar:@"preSolveFunc"];
+        cpConstraintSetPreSolveFunc(self.constraint, cpConstraintPreSolveFuncHelper);
+    } else {
+        cpConstraintSetPreSolveFunc(self.constraint, NULL);
+    }
+}
+
+- (void)setPostSolveFunc:(id)obj
+{
+    if (nu_objectIsKindOfClass(obj, [NuBlock class])) {
+        [self setValue:obj forIvar:@"postSolveFunc"];
+        cpConstraintSetPostSolveFunc(self.constraint, cpConstraintPostSolveFuncHelper);
+    } else {
+        cpConstraintSetPostSolveFunc(self.constraint, NULL);
+        cpConstraintPostSolveFuncHelper(NULL, NULL);
+    }
+}
+
+- (cpFloat)impulse
+{
+    return cpConstraintGetImpulse(self.constraint);
+}
+
 @end

@@ -4964,7 +4964,7 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
     id args = evaluatedArguments(cdr, context);
     id dict = (!nu_valueIsNull(args) && nu_objectIsKindOfClass([args car], [NSDictionary class]))
         ? [args car]
-        : [NSDictionary dictionaryWithList:evaluatedArguments(cdr, context)];
+        : [NSDictionary dictionaryWithList:args];
     return [self objectWithProperties:dict];
 }
 
@@ -7025,15 +7025,22 @@ NuSymbolTable *sharedSymbolTable = 0;
 - (id) evalWithContext:(NSMutableDictionary *)context
 {
     
-    char c = (char) [[self stringValue] characterAtIndex:0];
-    // If the symbol is a class instance variable, find "self" and ask it for the ivar value.
-    if (c == '@') {
-        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-        id object = [context lookupObjectForKey:[symbolTable symbolWithString:@"self"]];
-        if (!object) return [NSNull null];
-        id ivarName = [[self stringValue] substringFromIndex:1];
-        id result = [object valueForIvar:ivarName];
-        return result ? result : (id) [NSNull null];
+    // If the symbol is a label (ends in ':'), then it will evaluate to itself.
+    if (isLabel)
+        return self;
+    
+    NSString *str = [self stringValue];
+    NSRange dot = [str rangeOfString:@"."];
+    if (dot.location != NSNotFound) {
+        NSString *first = [str substringToIndex:dot.location];
+        NSString *rest = [str substringFromIndex:dot.location+1];
+        if (rest.length) {
+            id object = get_symbol_value_with_context(first, context);
+            if (!object)
+                return Nu__null;
+            id result = [object valueForKeyPath:rest];
+            return result ? result : Nu__null;
+        }
     }
     
     // Next, try to find the symbol in the local evaluation context.
@@ -7053,10 +7060,6 @@ NuSymbolTable *sharedSymbolTable = 0;
         return value;
     }
         
-    // If the symbol is a label (ends in ':'), then it will evaluate to itself.
-    if (isLabel)
-        return self;
-    
     // If the symbol is still unknown, try to find a class with this name.
     id className = [self stringValue];
     // the symbol should retain its value.

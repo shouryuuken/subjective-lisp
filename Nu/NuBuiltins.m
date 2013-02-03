@@ -543,14 +543,13 @@
 @implementation Nu_quasiquote_eval_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    // bqcomma is handled by Nu_quasiquote_operator.
-    // If we get here, it means someone called bq_comma
-    // outside of a backquote
-    [NSException raise:@"NuQuasiquoteEvalOutsideQuasiquote"
-                format:@"Comma must be inside a backquote"];
-    
-    // Purely cosmetic...
-    return Nu__null;
+    id car = [cdr car];
+    if (nu_objectIsKindOfClass(car, [NuCell class])) {
+        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
+        id list = [[symbolTable symbolWithString:@"list"] value];
+        return [list callWithArguments:car context:context];
+    }
+    return car;
 }
 
 @end

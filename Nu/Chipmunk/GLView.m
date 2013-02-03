@@ -31,8 +31,6 @@
 
 	PolyRenderer *_renderer;
 	NSTimeInterval _lastFrameTime;
-
-    ChipmunkMultiGrab *_multiGrab;
 	
 	// Convert touches to absolute coords.
 	Transform _touchTransform;
@@ -297,30 +295,37 @@
 	return t_point(_touchTransform, [touch locationInView:touch.view]);
 }
 
+- (void)callTouchesDelegate:(NSString *)key touches:(id)touches event:(id)event
+{
+    id delegate = [self.space valueForIvar:@"touchesDelegate"];
+    if (nu_valueIsNull(delegate))
+        return;
+    id block = [delegate valueForKey:key];
+    if (!nu_valueIsNull(block)) {
+        execute_block_safely(^{
+            return [block evalWithArguments:nulist(self, touches, event, nil)];
+        });
+    }
+}
+
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-	for(UITouch *touch in touches){
-		[_multiGrab beginLocation:[self convertTouch:touch]];
-	}
+    [self callTouchesDelegate:@"began" touches:touches event:event];
 }
 
 -(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-	for(UITouch *touch in touches){
-		[_multiGrab updateLocation:[self convertTouch:touch]];
-	}
+    [self callTouchesDelegate:@"moved" touches:touches event:event];
 }
 
 -(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-	for(UITouch *touch in touches){
-		[_multiGrab endLocation:[self convertTouch:touch]];
-	}
+    [self callTouchesDelegate:@"ended" touches:touches event:event];
 }
 
 -(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
 {
-	[self touchesEnded:touches withEvent:event];
+    [self callTouchesDelegate:@"cancelled" touches:touches event:event];
 }
 
 - (ChipmunkSpace *)space { return _space; }
@@ -330,15 +335,6 @@
     [_space release];
     _space = space;
     
-    cpFloat grabForce = 1e5;
-    _multiGrab = [[ChipmunkMultiGrab alloc] initForSpace:space withSmoothing:cpfpow(0.3, 60) withGrabForce:grabForce];
-    _multiGrab.layers = GRABABLE_MASK_BIT;
-    _multiGrab.grabFriction = grabForce*0.1;
-    _multiGrab.grabRotaryFriction = 1e3;
-    _multiGrab.grabRadius = 20.0;
-    _multiGrab.pushMass = 1.0;
-    _multiGrab.pushFriction = 0.7;
-    _multiGrab.pushMode = TRUE;
 }
 
 - (void)setFrame:(CGRect)frame
