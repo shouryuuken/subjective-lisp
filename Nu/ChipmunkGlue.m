@@ -196,6 +196,8 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
 
 - (id) handleUnknownMessage:(NuCell *)cdr withContext:(NSMutableDictionary *)context
 {
+    if (nu_valueIsNull(cdr))
+        return self;
     for (id obj in cdr) {
         id result = [obj evalWithContext:context];
         if (result)

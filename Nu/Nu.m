@@ -773,10 +773,12 @@ id nuclassname(id obj)
                 return [self partialEvaluation:cdr context:calling_context];
             }
             [NSException raise:@"NuIncorrectNumberOfArguments"
-                        format:@"Incorrect number of arguments to block. Received %d but expected %d: %@",
+                        format:@"Incorrect number of arguments to block. Received %d but expected %d:\nblock %@\nparameters %@\n arguments %@",
              numberOfArguments,
              numberOfParameters,
-             [parameters stringValue]];
+             [self stringValue],
+             [parameters stringValue],
+             [cdr stringValue]];
         }
     }
     //NSLog(@"block eval %@", [cdr stringValue]);
@@ -4833,9 +4835,9 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
 
 - (id) sendMessage:(id)cdr withContext:(NSMutableDictionary *)context
 {
-    // By themselves, Objective-C objects evaluate to themselves.
-    if (!cdr || (cdr == Nu__null))
-        return self;
+    if (nu_valueIsNull(cdr)) {
+        return [self handleUnknownMessage:nil withContext:context];
+    }
     
     // But when they're at the head of a list, that list is converted into a message that is sent to the object.
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -4874,9 +4876,9 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
     id target = self;
     
     // Look up the appropriate method to call for the specified selector.
+    BOOL isAClass = (object_getClass(self) == [NuClass class]);
     Method m;
     // instead of isMemberOfClass:, which may be blocked by an NSProtocolChecker
-    BOOL isAClass = (object_getClass(self) == [NuClass class]);
     if (isAClass) {
         // Class wrappers (objects of type NuClass) get special treatment. Instance methods are sent directly to the class wrapper object.
         // But when a class method is sent to a class wrapper, the method is instead sent as a class method to the wrapped class.
@@ -4955,12 +4957,17 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
 {
     id obj;
     obj = [[[self alloc] init] autorelease];
-    [obj setValuesForKeysWithDictionary:prop];
+    if (prop) {
+        [obj setValuesForKeysWithDictionary:prop];
+    }
     return obj;
 }
 
 + (id)handleUnknownMessage:(id)cdr withContext:(NSMutableDictionary *)context
 {
+    if (nu_valueIsNull(cdr)) {
+        return [self objectWithProperties:nil];
+    }
     id args = evaluatedArguments(cdr, context);
     id dict = (!nu_valueIsNull(args) && nu_objectIsKindOfClass([args car], [NSDictionary class]))
         ? [args car]
@@ -4971,6 +4978,9 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
 
 - (id) handleUnknownMessage:(id) message withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(message)) {
+        return self;
+    }
     // Collect the method selector and arguments.
     // This seems like a bottleneck, and it also lacks flexibility.
     // Replacing explicit string building with the selector cache reduced runtimes by around 20%.
@@ -5002,6 +5012,7 @@ void nu_markEndOfObjCTypeString(char *type, size_t len)
         sel = [selectorCache selector];
     }
     
+    NSLog(@"984578 sel %@", sel_getName(sel));
     // If the object responds to methodSignatureForSelector:, we should create and forward an invocation to it.
     NSMethodSignature *methodSignature = sel ? [self methodSignatureForSelector:sel] : 0;
     if (methodSignature) {

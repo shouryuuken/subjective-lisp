@@ -524,6 +524,10 @@ id nu_trues(id enumerable, id block, Class class)
 // When an unknown message is received by a cell, treat it as a call to objectAtIndex:
 - (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(method)) {
+        return self;
+    }
+    
     if ([[method car] isKindOfClass:[NuSymbol class]]) {
         NSString *methodName = [[method car] stringValue];
         NSUInteger length = [methodName length];
@@ -996,6 +1000,10 @@ id arrip(NSArray *arr, NSIndexPath *ip)
 // When an unknown message is received by an array, treat it as a call to objectAtIndex:
 - (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(method)) {
+        return self;
+    }
+    
     id m = [[method car] evalWithContext:context];
     if ([m isKindOfClass:[NSNumber class]]) {
         int mm = [m intValue];
@@ -1262,36 +1270,44 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
 // When an unknown message is received by a dictionary, treat it as a call to objectForKey:
 - (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(method)) {
+        return self;
+    }
+    
+    id result = nil;
     id cursor = method;
-    while (cursor && (cursor != Nu__null) && ([cursor cdr]) && ([cursor cdr] != Nu__null)) {
+    while (!nu_valueIsNull(cursor) && !nu_valueIsNull([cursor cdr])) {
         id key = [cursor car];
         id value = [[cursor cdr] car];
-        if ([key isKindOfClass:[NuSymbol class]] && [key isLabel]) {
+        if (nu_objectIsKindOfClass(key, [NuSymbol class]) && [key isLabel]) {
             id evaluated_key = [key labelName];
             id evaluated_value = [value evalWithContext:context];
             [self setValue:evaluated_value forKey:evaluated_key];
-        }
-        else {
+            result = self;
+        } else if (nu_objectIsKindOfClass(key, [NSString class])) {
             id evaluated_key = [key evalWithContext:context];
             id evaluated_value = [value evalWithContext:context];
             [self setValue:evaluated_value forKey:evaluated_key];
+            result = self;
+        } else {
+            result = [key evalWithContext:context];
+            cursor = [cursor cdr];
+            continue;
         }
         cursor = [[cursor cdr] cdr];
     }
-    if (cursor && (cursor != Nu__null)) {
+    if (!nu_valueIsNull(cursor)) {
         // if the method is a label, use its value as the key.
-        if ([[cursor car] isKindOfClass:[NuSymbol class]] && ([[cursor car] isLabel])) {
-            id result = [self objectForKey:[[cursor car] labelName]];
-			return result ? result : Nu__null;
-        }
-        else {
-            id result = [self objectForKey:[[cursor car] evalWithContext:context]];
-			return result ? result : Nu__null;
+        NSLog(@"8198 %@", cursor);
+        if (nu_objectIsKindOfClass([cursor car], [NuSymbol class])) {
+            result = [self valueForKey:[[cursor car] stringValue]];
+        } else if (nu_objectIsKindOfClass([cursor car], [NSString class])) {
+            result = [self valueForKey:[cursor car]];
+        } else {
+            result = [[cursor car] evalWithContext:context];
         }
     }
-    else {
-        return Nu__null;
-    }
+    return (result) ? result : Nu__null;
 }
 
 // Iterate over the key-object pairs in a dictionary. Pass it a block with two arguments: (key object).
@@ -1353,7 +1369,7 @@ int strchrcount(char *str, char c)
         return YES;
     }
     char *name = (char *)sel_getName(selector);
-    if ([self objectForKey:[NSString stringWithUTF8String:name]]) {
+    if ([self valueForKey:[NSString stringWithUTF8String:name]]) {
         return YES;
     }
     return NO;
@@ -1797,6 +1813,9 @@ id execute_block_safely(id (^block)())
 
 - (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(method)) {
+        return self;
+    }
     NSMutableArray *arr = [[[NSMutableArray alloc] init] autorelease];
     [arr addObject:self];
     for (id elt in method) {

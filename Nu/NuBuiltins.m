@@ -1755,18 +1755,6 @@ id evaluatedArguments(id cdr, NSMutableDictionary *context)
 
 @end
 
-@interface Nu_dict_operator : NuOperator {}
-@end
-
-@implementation Nu_dict_operator
-
-- (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
-{
-    return [NSDictionary dictionaryWithList:evaluatedArguments(cdr, context)];
-}
-
-@end
-
 @interface Nu_parse_operator : NuOperator {}
 @end
 
@@ -1993,7 +1981,7 @@ void load_builtins()
     
     install(@"nu", @"set",      Nu_set_operator);
     install(@"nu", @"array",    Nu_array_operator);
-    install(@"nu", @"dict",     Nu_dict_operator);
+    install_builtin(@"nu", @"dict",     [NSMutableDictionary class]);
     
     install(@"nu", @"class",    Nu_class_operator);
     install(@"nu", @"ivar",     Nu_ivar_operator);
@@ -2310,6 +2298,10 @@ int nucurl_debug_helper(CURL *curl, curl_infotype type, char *p, size_t n, void 
 
 - (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
 {
+    if (nu_valueIsNull(method)) {
+        return self;
+    }
+    
     id m = [[method car] evalWithContext:context];
     if (!_curl || [m isKindOfClass:[NSNumber class]]) {
         int mm = [m intValue];
