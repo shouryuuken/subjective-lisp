@@ -1,3 +1,5 @@
+#define CP_ALLOW_PRIVATE_ACCESS
+
 #import "PolyRenderer.h"
 
 #import <GLKit/GLKit.h>
@@ -129,6 +131,24 @@ ColorFromHash(cpHashValue hash, float alpha)
 {
     cpVect pos = cpvadd(self.body.body->p, cpvmult(self.body.body->v, dt));
     [renderer drawDot:pos radius:4.0 color:SHAPE_OUTLINE_COLOR];
+}
+@end
+
+@interface ChipmunkCircleColorShape : ChipmunkCircleShape
+{
+    Color _color;
+}
+@end
+@implementation ChipmunkCircleColorShape
+- (void)setColor:(UIColor *)color
+{
+    [color getRed:&(_color.r) green:&(_color.g) blue:&(_color.b) alpha:&(_color.a)];
+}
+
+-(void)drawWithRenderer:(PolyRenderer *)renderer dt:(cpFloat)dt;
+{
+    cpVect pos = cpvadd(self.body.body->p, cpvmult(self.body.body->v, dt));
+    [renderer drawDot:pos radius:4.0 color:_color];
 }
 @end
 

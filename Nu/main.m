@@ -1,4 +1,4 @@
-//
+ //
 //  main.m
 //  Nu
 //
@@ -14,6 +14,6 @@ int main(int argc, char *argv[])
 {
     @autoreleasepool {
         NuInit();
-        return UIApplicationMain(argc, argv, nil, @"AppDelegate");
+        return UIApplicationMain(argc, argv, nil, @"Main");
     }
 }

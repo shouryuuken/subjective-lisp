@@ -53,10 +53,6 @@
  */
 @interface NuSymbol : NSObject <NSCoding>
 
-/*! Get the global value of a symbol. */
-- (id) value;
-/*! Set the global value of a symbol. */
-- (void) setValue:(id)v;
 /*! Get an object of type NSString representing the symbol. */
 - (NSString *) stringValue;
 /*! Returns true if a symbol is a label. */
@@ -71,7 +67,8 @@
 - (NSComparisonResult) compare:(NuSymbol *) anotherSymbol;
 /*! Get a description of a symbol.  This is equivalent to a call to stringValue. */
 - (NSString *) description;
-
+@property (nonatomic, retain) id value;
+@property (nonatomic, retain) NSMutableDictionary *context;
 @end
 
 /*!
@@ -96,6 +93,7 @@
 - (id)builtinForKeyPath:(id)lst;
 - (void)setBuiltin:(id)obj forKeyPath:(id)lst;
 @property (nonatomic, retain) NSMutableDictionary *builtin;
+@property (nonatomic, retain) NSMutableDictionary *external;
 @end
 
 extern NuSymbolTable *sharedSymbolTable;
@@ -215,24 +213,12 @@ extern NuSymbolTable *sharedSymbolTable;
 @interface NuParser : NSObject
 
 - (void) setFilename:(NSString *) name;
-/*! Get the symbol table used by a parser. */
-- (NuSymbolTable *) symbolTable;
-/*! Get the top-level evaluation context that a parser uses for evaluation. */
-- (NSMutableDictionary *) context;
 /*! Parse Nu source into an expression, returning the NuCell at the top of the resulting expression.
  Since parsing may produce multiple expressions, the top-level NuCell is a Nu <b>progn</b> operator.
  */
 - (id) parse:(NSString *)string;
 /*! Call -parse: while specifying the name of the source file for the string to be parsed. */
 - (id) parse:(NSString *)string asIfFromFilename:(NSString *) filename;
-/*! Evaluate a parsed Nu expression in the parser's evaluation context. */
-- (id) eval: (id) code;
-/*! Parse Nu source text and evaluate it in the parser's evalation context. */
-- (NSString *) parseEval:(NSString *)string;
-/*! Get the value of a name or expression in the parser's context. */
-- (id) valueForKey:(NSString *)string;
-/*! Set the value of a name in the parser's context. */
-- (void) setValue:(id)value forKey:(NSString *)string;
 /*! Returns true if the parser is currently parsing an incomplete Nu expression.
  Presumably the rest of the expression will be passed in with a future
  invocation of the parse: method.
@@ -240,10 +226,6 @@ extern NuSymbolTable *sharedSymbolTable;
 - (BOOL) incomplete;
 /*! Reset the parse set after an error */
 - (void) reset;
-
-/*! Run a parser interactively at the console (Terminal.app). */
-- (void) interact:(NSString *)str callback:(void (^)(NSString *str))outputcb;
-- (void)interactEval:(id)progn callback:(void (^)(NSString *str))outputcb;
 
 @end
 
@@ -997,6 +979,7 @@ extern NuSymbolTable *sharedSymbolTable;
  */
 @interface NSString(Nu)
 
+- (BOOL)isDirectory;
 /*! Get string consisting of a single carriage return character. */
 + (id) carriageReturn;
 /*!
@@ -1141,6 +1124,7 @@ void NuInit(void);
 // Experimental. They may change or disappear in future releases.
 id nucstr(const unsigned char *string);
 id nucstrn(const unsigned char *string, int length);
+NuSymbol *nusym(NSString *str);
 id nusymcstr(const unsigned char *string);
 id nusymcstrn(const unsigned char *string, int length);
 id nucell(id car, id cdr);
@@ -1162,7 +1146,7 @@ id path_to_namespace(NSString *name);
 id path_to_symbol(NSString *namespace, NSString *symbol);
 id read_symbol(NSString *namespace, NSString *symbol);
 int write_symbol_to_file(NSString *namespace, NSString *name, id contents);
-void clear_symbol_after_write(NSString *name);
+void refresh_symbol_after_write(NSString *name);
 int write_symbol(NSString *namespace, NSString *name, id contents);
 int nu_debug_mode();
 NSArray *nu_namespaces();
@@ -1188,7 +1172,6 @@ BOOL nu_objectIsKindOfClass(id object, Class class);
 id get_nu_value_from_objc_value(void *objc_value, const char *typeString);
 int set_objc_value_from_nu_value(void *objc_value, id nu_value, const char *typeString);
 NSString *signature_for_identifier(NuCell *cell, NuSymbolTable *symbolTable);
-id help_add_method_to_class(Class classToExtend, id cdr, NSMutableDictionary *context, BOOL addClassMethod);
 
 extern id Nu__null;
 extern id Nu__t;
@@ -1197,11 +1180,8 @@ extern id Nu__t;
 // symbols.  Here we define two string keys that allow us to store
 // some extra information in our contexts.
 
-// Use this key to get the symbol table from an execution context.
-#define SYMBOLS_KEY @"._symbols"
-
 // Use this key to get the parent context of an execution context.
-#define PARENT_KEY @"._parent"
+#define PARENT_KEY @"_parent"
 
 #define IS_NOT_NULL(xyz) ((xyz) && (((id) (xyz)) != Nu__null))
 
@@ -1285,3 +1265,6 @@ int clear_symbol(NSString *name);
 id execute_block_safely(id (^block)());
 
 id evaluatedArguments(id cdr, NSMutableDictionary *context);
+
+void install_builtin(NSString *namespace, NSString *key, id val);
+void install_static_func(NSString *namespace, void *func, char *name, char *sig);

@@ -47,17 +47,6 @@
  }
 */
 
-void nusym(char *name, id obj)
-{
-    NuSymbolTable *symbolTable = [NuSymbolTable sharedSymbolTable];    
-    [(NuSymbol *)[symbolTable symbolWithString:[NSString stringWithCString:name encoding:NSUTF8StringEncoding]] setValue:obj];
-}
-
-void nufn(char *name, void *fn, char *signature)
-{
-    nusym(name, [[[NuBridgedFunction alloc] initWithStaticFunction:fn name:name signature:signature] autorelease]);
-}
-
 
 #define GRABABLE_MASK_BIT (1<<31)
 #define NOT_GRABABLE_MASK (~GRABABLE_MASK_BIT)
@@ -68,11 +57,8 @@ void nufn(char *name, void *fn, char *signature)
 
 @implementation ChipmunkGlue
 
-static inline cpFloat
-frand(void)
-{
-	return (cpFloat)rand()/(cpFloat)RAND_MAX;
-}
+static inline cpFloat frand(){return (cpFloat)arc4random()/(cpFloat)UINT32_MAX;}
+static inline cpFloat frand_unit(){return 2.0f*frand() - 1.0f;}
 
 static cpVect
 frand_unit_circle()
@@ -103,85 +89,93 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
 
 + (void)bindings
 {
-    nusym("GRABABLE_MASK_BIT", [NSNumber numberWithUnsignedInt:GRABABLE_MASK_BIT]);
-    nusym("NOT_GRABABLE_MASK", [NSNumber numberWithUnsignedLong:NOT_GRABABLE_MASK]);
-    nusym("cpfinfinity", [NSNumber numberWithFloat:INFINITY]);
-    nusym("cpfpi", [NSNumber numberWithFloat:M_PI]);
-    nusym("cpfe", [NSNumber numberWithFloat:M_E]);
+    static BOOL is_initialized = NO;
+    if (is_initialized) {
+        return;
+    }
+    is_initialized = YES;
     
-    nufn("cpfsqrt", cpfsqrt, "ff");
-    nufn("cpfsin", cpfsin, "ff");
-    nufn("cpfcos", cpfcos, "ff");
-    nufn("cpfacos", cpfacos, "ff");
-    nufn("cpfatan2", cpfatan2, "fff");
-    nufn("cpfmod", cpfmod, "fff");
-    nufn("cpfexp", cpfexp, "ff");
-    nufn("cpfpow", cpfpow, "fff");
-    nufn("cpffloor", cpffloor, "ff");
-    nufn("cpfceil", cpfceil, "ff");
-    nufn("cpfmax", cpfmax, "fff");
-    nufn("cpfmin", cpfmin, "fff");
-    nufn("cpfabs", cpfabs, "ff");
-    nufn("cpfclamp", cpfclamp, "ffff");
-    nufn("cpfclamp01", cpfclamp01, "ff");
-    nufn("cpflerp", cpflerp, "ffff");
-    nufn("cpflerpconst", cpflerpconst, "ffff");
-
-    nufn("cpveql", cpveql, "i{?=ff}{?=ff}");
-    nufn("cpvadd", cpvadd, "{?=ff}{?=ff}{?=ff}");
-    nufn("cpvsub", cpvsub, "{?=ff}{?=ff}{?=ff}");
-    nufn("cpvneg", cpvneg, "{?=ff}{?=ff}");
-    nufn("cpvmult", cpvmult, "{?=ff}{?=ff}f");
-    nufn("cpvdot", cpvdot, "f{?=ff}{?=ff}");
-    nufn("cpvcross", cpvcross, "f{?=ff}{?=ff}");
-    nufn("cpvperp", cpvperp, "{?=ff}{?=ff}");
-    nufn("cpvrperp", cpvrperp, "{?=ff}{?=ff}");
-    nufn("cpvproject", cpvproject, "{?=ff}{?=ff}{?=ff}");
-    nufn("cpvrotate", cpvrotate, "{?=ff}{?=ff}{?=ff}");
-    nufn("cpvunrotate", cpvunrotate, "{?=ff}{?=ff}{?=ff}");
-    nufn("cpvlength", cpvlength, "f{?=ff}");
-    nufn("cpvlengthsq", cpvlengthsq, "f{?=ff}");
-    nufn("cpvlerp", cpvlerp, "{?=ff}{?=ff}{?=ff}f");
-    nufn("cpvlerpconst", cpvlerpconst, "{?=ff}{?=ff}{?=ff}f");
-    nufn("cpvslerp", cpvslerp, "{?=ff}{?=ff}{?=ff}f");
-    nufn("cpvslerpconst", cpvslerpconst, "{?=ff}{?=ff}{?=ff}f");
-    nufn("cpvnormalize", cpvnormalize_safe, "{?=ff}{?=ff}");
-    nufn("cpvclamp", cpvclamp, "{?=ff}{?=ff}f");
-    nufn("cpvdist", cpvdist, "f{?=ff}{?=ff}");
-    nufn("cpvdistsq", cpvdistsq, "f{?=ff}{?=ff}");
-    nufn("cpvnear", cpvnear, "i{?=ff}{?=ff}f");
-    nufn("cpvforangle", cpvforangle, "{?=ff}f");
-    nufn("cpvtoangle", cpvtoangle, "f{?=ff}");
+    install_builtin(@"cp", @"CP_ALL_LAYERS", [NSNumber numberWithUnsignedInt:CP_ALL_LAYERS]);
+    install_builtin(@"cp", @"GRABABLE_MASK_BIT", [NSNumber numberWithUnsignedInt:GRABABLE_MASK_BIT]);
+    install_builtin(@"cp", @"NOT_GRABABLE_MASK", [NSNumber numberWithUnsignedLong:NOT_GRABABLE_MASK]);
+    install_builtin(@"cp", @"cpfinfinity", [NSNumber numberWithFloat:INFINITY]);
+    install_builtin(@"cp", @"cpfpi", [NSNumber numberWithFloat:M_PI]);
+    install_builtin(@"cp", @"cpfe", [NSNumber numberWithFloat:M_E]);
     
-    nufn("cp-new-bb", cpBBNew, "{?=ffff}ffff");
-    nufn("cp-new-bb-for-circle", cpBBNewForCircle, "{?=ffff}{?=ff}f");
+    install_static_func(@"cp",  cpfsqrt, "cpfsqrt", "ff");
+    install_static_func(@"cp", cpfsin, "cpfsin", "ff");
+    install_static_func(@"cp", cpfcos, "cpfcos", "ff");
+    install_static_func(@"cp", cpfacos, "cpfacos", "ff");
+    install_static_func(@"cp", cpfatan2, "cpfatan2", "fff");
+    install_static_func(@"cp", cpfmod, "cpfmod", "fff");
+    install_static_func(@"cp", cpfexp, "cpfexp", "ff");
+    install_static_func(@"cp", cpfpow, "cpfpow", "fff");
+    install_static_func(@"cp", cpffloor, "cpffloor", "ff");
+    install_static_func(@"cp", cpfceil, "cpfceil", "ff");
+    install_static_func(@"cp", cpfmax, "cpfmax", "fff");
+    install_static_func(@"cp", cpfmin, "cpfmin", "fff");
+    install_static_func(@"cp", cpfabs, "cpfabs", "ff");
+    install_static_func(@"cp", cpfclamp, "cpfclamp", "ffff");
+    install_static_func(@"cp", cpfclamp01, "cpfclamp01", "ff");
+    install_static_func(@"cp", cpflerp, "cpflerp", "ffff");
+    install_static_func(@"cp", cpflerpconst, "cpflerpconst", "ffff");
 
-    nufn("cp-bb-intersects-bb", cpBBIntersects, "i{?=ffff}{?=ffff}");
-    nufn("cp-bb-contains-bb", cpBBContainsBB, "i{?=ffff}{?=ffff}");
-    nufn("cp-bb-contains-vect", cpBBContainsVect, "i{?=ffff}{?=ff}");
-    nufn("cp-merge-bb", cpBBMerge, "{?=ffff}{?=ffff}{?=ffff}");
-    nufn("cp-expand-bb", cpBBExpand, "{?=ffff}{?=ffff}{?=ff}");
-    nufn("cp-bb-area", cpBBArea, "f{?=ffff}");
-    nufn("cp-bb-merged-area", cpBBMergedArea, "f{?=ffff}{?=ffff}");
-    nufn("cp-bb-segment-query", cpBBSegmentQuery, "f{?=ffff}{?=ff}{?=ff}");
-    nufn("cp-bb-intersects-segment", cpBBIntersectsSegment, "i{?=ffff}{?=ff}{?=ff}");
-    nufn("cp-bb-clamp-vect", cpBBClampVect, "{?=ff}{?=ffff}{?=ff}");
-    nufn("cp-bb-wrap-vect", cpBBWrapVect, "{?=ff}{?=ffff}{?=ff}");
+    install_static_func(@"cp", cpveql, "cpveql", "i{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvadd, "cpvadd", "{?=ff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvsub, "cpvsub", "{?=ff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvneg, "cpvneg", "{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvmult, "cpvmult", "{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvdot, "cpvdot", "f{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvcross, "cpvcross", "f{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvperp, "cpvperp", "{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvrperp, "cpvrperp", "{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvproject, "cpvproject", "{?=ff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvrotate, "cpvrotate", "{?=ff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvunrotate, "cpvunrotate", "{?=ff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvlength, "cpvlength", "f{?=ff}");
+    install_static_func(@"cp", cpvlengthsq, "cpvlengthsq", "f{?=ff}");
+    install_static_func(@"cp", cpvlerp, "cpvlerp", "{?=ff}{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvlerpconst, "cpvlerpconst", "{?=ff}{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvslerp, "cpvslerp", "{?=ff}{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvslerpconst, "cpvslerpconst", "{?=ff}{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvnormalize_safe, "cpvnormalize", "{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvclamp, "cpvclamp", "{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvdist, "cpvdist", "f{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvdistsq, "cpvdistsq", "f{?=ff}{?=ff}");
+    install_static_func(@"cp", cpvnear, "cpvnear", "i{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpvforangle, "cpvforangle", "{?=ff}f");
+    install_static_func(@"cp", cpvtoangle, "cpvtoangle", "f{?=ff}");
+    
+    install_static_func(@"cp", cpBBNew, "cp-new-bb", "{?=ffff}ffff");
+    install_static_func(@"cp", cpBBNewForCircle, "cp-new-bb-for-circle", "{?=ffff}{?=ff}f");
+
+    install_static_func(@"cp", cpBBIntersects, "cp-bb-intersects-bb", "i{?=ffff}{?=ffff}");
+    install_static_func(@"cp", cpBBContainsBB, "cp-bb-contains-bb", "i{?=ffff}{?=ffff}");
+    install_static_func(@"cp", cpBBContainsVect, "cp-bb-contains-vect", "i{?=ffff}{?=ff}");
+    install_static_func(@"cp", cpBBMerge, "cp-merge-bb", "{?=ffff}{?=ffff}{?=ffff}");
+    install_static_func(@"cp", cpBBExpand, "cp-expand-bb", "{?=ffff}{?=ffff}{?=ff}");
+    install_static_func(@"cp", cpBBArea, "cp-bb-area", "f{?=ffff}");
+    install_static_func(@"cp", cpBBMergedArea, "cp-bb-merged-area", "f{?=ffff}{?=ffff}");
+    install_static_func(@"cp", cpBBSegmentQuery, "cp-bb-segment-query", "f{?=ffff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpBBIntersectsSegment, "cp-bb-intersects-segment", "i{?=ffff}{?=ff}{?=ff}");
+    install_static_func(@"cp", cpBBClampVect, "cp-bb-clamp-vect", "{?=ff}{?=ffff}{?=ff}");
+    install_static_func(@"cp", cpBBWrapVect, "cp-bb-wrap-vect", "{?=ff}{?=ffff}{?=ff}");
         
-    nufn("cp-moment-for-circle", cpMomentForCircle, "ffff{?=ff}");
-    nufn("cp-moment-for-segment", cpMomentForSegment, "ff{?=ff}{?=ff}");
-    nufn("cp-moment-for-poly", cpMomentForPolyHelper, "ff@{?=ff}");
-    nufn("cp-moment-for-box", cpMomentForBox, "ffff");
+    install_static_func(@"cp", cpMomentForCircle, "cp-moment-for-circle", "ffff{?=ff}");
+    install_static_func(@"cp", cpMomentForSegment, "cp-moment-for-segment", "ff{?=ff}{?=ff}");
+    install_static_func(@"cp", cpMomentForPolyHelper, "cp-moment-for-poly", "ff@{?=ff}");
+    install_static_func(@"cp", cpMomentForBox, "cp-moment-for-box", "ffff");
 
-    nufn("cp-area-for-circle", cpAreaForCircle, "fff");
-    nufn("cp-area-for-segment", cpAreaForSegment, "f{?=ff}{?=ff}f");
+    install_static_func(@"cp", cpAreaForCircle, "cp-area-for-circle", "fff");
+    install_static_func(@"cp", cpAreaForSegment, "cp-area-for-segment", "f{?=ff}{?=ff}f");
 //    nufn("cp-area-for-poly", cpAreaForPoly, "f
 //    cpFloat cpAreaForPoly(const int numVerts, const cpVect *verts)
     
-    nufn("cp-reset-shape-id-counter", cpResetShapeIdCounter, "v");
+    install_static_func(@"cp", cpResetShapeIdCounter, "cp-reset-shape-id-counter", "v");
     
-    nufn("frand", frand, "f");
-    nufn("frand-unit-circle", frand_unit_circle, "{?=ff}");
+    install_static_func(@"cp", frand, "frand", "f");
+    install_static_func(@"cp", frand_unit, "frand-unit", "f");
+    install_static_func(@"cp", frand_unit_circle, "frand-unit-circle", "{?=ff}");
     
 }
 
@@ -194,26 +188,79 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
     cpSpaceUseSpatialHash(self.space, dim, count);
 }
 
-- (id) handleUnknownMessage:(NuCell *)cdr withContext:(NSMutableDictionary *)context
+- (id) handleUnknownMessage:(id)cdr withContext:(NSMutableDictionary *)context
 {
-    if (nu_valueIsNull(cdr))
-        return self;
-    for (id obj in cdr) {
-        id result = [obj evalWithContext:context];
-        if (result)
-            [self add:result];
+    void (^__block func)(id lst) = ^(id lst) {
+        for (id elt in lst) {
+            if (nu_objectIsKindOfClass(elt, [NSArray class])) {
+                func(elt);
+            } else if (!nu_valueIsNull(elt)) {
+                [self add:elt];
+            }
+        }
+    };
+    for (id elt in cdr) {
+        id value = [elt evalWithContext:context];
+        if (nu_objectIsKindOfClass(value, [NSArray class])) {
+            func(value);
+        } else if (nu_objectIsKindOfClass(value, [ChipmunkBody class])
+                   || nu_objectIsKindOfClass(value, [ChipmunkShape class])
+                   || nu_objectIsKindOfClass(value, [ChipmunkConstraint class])) {
+            [self add:value];
+        } else {
+            prn([NSString stringWithFormat:@"ChipmunkSpace: trying to add invalid object %@", value]);
+        }
     }
-    return cdr;
+    return self;
 }
 
-- (id)touchesDelegate
+-(bool)absorbPreSolve:(cpArbiter *)arbiter space:(ChipmunkSpace*)space
 {
-    return [self valueForIvar:@"touchesDelegate"];
-}
-
-- (void)setTouchesDelegate:(id)obj
-{
-    [self setValue:obj forIvar:@"touchesDelegate"];
+    cpFloat DENSITY = (1.0e-2);
+    
+    // Get the two colliding shapes
+    CHIPMUNK_ARBITER_GET_SHAPES(arbiter, ball1, ball2);
+    ChipmunkCircleShape *bigger = (id)ball1;
+    ChipmunkCircleShape *smaller = (id)ball2;
+    
+    if(smaller.radius > bigger.radius){
+        ChipmunkCircleShape *tmp = bigger;
+        bigger = smaller;
+        smaller = tmp;
+    }
+    
+    cpFloat r1 = bigger.radius;
+    cpFloat r2 = smaller.radius;
+    cpFloat area = r1*r1 + r2*r2;
+    cpFloat dist = cpfmax(cpvdist(bigger.body.pos, smaller.body.pos), cpfsqrt(area));
+    
+    cpFloat r1_new = (2.0*dist + cpfsqrt(8.0*area - 4.0*dist*dist))/4.0;
+    
+    // First update the velocity by gaining the absorbed momentum.
+    cpFloat old_mass = bigger.body.mass;
+    cpFloat new_mass = r1_new*r1_new*DENSITY;
+    cpFloat gained_mass = new_mass - old_mass;
+    bigger.body.vel = cpvmult(cpvadd(cpvmult(bigger.body.vel, old_mass), cpvmult(smaller.body.vel, gained_mass)), 1.0/new_mass);
+    
+    bigger.body.mass = new_mass;
+    cpCircleShapeSetRadius(bigger.shape, r1_new);
+    [[bigger valueForIvar:@"sprite"] setScale:r1_new*3/256.0];
+    
+    cpFloat r2_new = dist - r1_new;
+    if(r2_new > 0.0){
+        smaller.body.mass = r2_new*r2_new*DENSITY;
+        cpCircleShapeSetRadius(smaller.shape, r2_new);
+        [[smaller valueForIvar:@"sprite"] setScale:r2_new*3/256.0];
+    } else {
+        // If smart remove is called from within a callback
+        // it will schedule a post-step callback to perform the removal automatically.
+        // NICE!
+        [[smaller valueForIvar:@"sprite"] removeFromParent];
+        [space smartRemove:smaller];
+        [space smartRemove:smaller.body];
+    }
+    
+    return FALSE;
 }
 
 - (id)callCollisionDelegate:(NSString *)key arbiter:(cpArbiter *)arbiter space:(ChipmunkSpace *)space
@@ -221,14 +268,10 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
     CP_ARBITER_GET_SHAPES(arbiter, aa, bb);
     id a = aa->data;
     id b = bb->data;
-    id typea = [a collisionType];
-    id typeb = [b collisionType];
-    id collisionDelegate = [typea valueForIvar:@"collisionDelegate"];
-    id delegate = [collisionDelegate valueForKey:(NSString *)typeb];
-    id block = [delegate valueForKey:key];
-    if (!nu_valueIsNull(block)) {
+    id block = [self valueForKey:@"collisionBlock"];
+    if (block) {
         return execute_block_safely(^{
-            return [block evalWithArguments:nulist(space, a, b, nil)];
+            return [block evalWithArguments:nulist(key, space, a, b, nil)];
         });
     }
     return nil;
@@ -256,9 +299,9 @@ cpFloat cpMomentForPolyHelper(cpFloat m, id verts, cpVect offset)
     [self callCollisionDelegate:@"separate" arbiter:arbiter space:space];
 }
 
-- (void)addCollisionDelegateA:(id)a b:(id)b
+- (void)addCollisionDelegateA:(id)a b:(id)b begin:(SEL)begin pre:(SEL)pre post:(SEL)post separate:(SEL)separate
 {
-    [self addCollisionHandler:self typeA:a typeB:b begin:@selector(collisionBegin:space:) preSolve:@selector(collisionPreSolve:space:) postSolve:@selector(collisionPostSolve:space:) separate:@selector(collisionSeparate:space:)];
+    [self addCollisionHandler:self typeA:a typeB:b begin:begin preSolve:pre postSolve:post separate:separate];
 }
 
 @end
@@ -652,5 +695,99 @@ cpConstraintPostSolveFuncHelper(cpConstraint *_constraint, cpSpace *_space)
 {
     return cpConstraintGetImpulse(self.constraint);
 }
+
+@end
+
+#import "cocos2d.h"
+
+
+@interface CCPhysicsParticle : CCParticleSystemQuad
+@property (nonatomic, assign) BOOL ignoreBodyRotation;
+@property (nonatomic, assign) cpBody *body;
+@property (nonatomic, assign) ChipmunkBody *chipmunkBody;
+@end
+
+@implementation CCPhysicsParticle
+
+@synthesize ignoreBodyRotation = _ignoreBodyRotation;
+@synthesize body = _body;
+
+-(ChipmunkBody *)chipmunkBody
+{
+    if (!_body)
+        return nil;
+    return (ChipmunkBody *) _body->data;
+}
+
+-(void)setChipmunkBody:(ChipmunkBody *)chipmunkBody
+{
+	_body = chipmunkBody.body;
+}
+// Override the setters and getters to always reflect the body's properties.
+-(CGPoint)position
+{
+    if (!_body)
+        return [super position];
+    return cpBodyGetPos(_body);
+}
+
+-(void)setPosition:(CGPoint)position
+{
+    if (!_body) {
+        [super setPosition:position];
+    } else {
+        cpBodySetPos(_body, position);
+    }
+}
+
+-(float)rotation
+{
+    if (!_body) {
+        return [super rotation];
+    }
+    return (_ignoreBodyRotation ? super.rotation : -CC_RADIANS_TO_DEGREES(cpBodyGetAngle(_body)));
+}
+
+-(void)setRotation:(float)rotation
+{
+    if (!_body) {
+        return [super setRotation:rotation];
+    }
+    if(_ignoreBodyRotation){
+        super.rotation = rotation;
+    } else {
+        cpBodySetAngle(_body, -CC_DEGREES_TO_RADIANS(rotation));
+    }
+}
+
+// returns the transform matrix according the Chipmunk Body values
+-(CGAffineTransform) nodeToParentTransform
+{
+    if (!_body) {
+        return [super nodeToParentTransform];
+    }
+    
+    cpVect rot = (_ignoreBodyRotation ? cpvforangle(-CC_DEGREES_TO_RADIANS(_rotationX)) : _body->rot);
+    rot.x *= _scaleX; rot.y *= _scaleY;
+    CGFloat x = _body->p.x + rot.x*-_anchorPointInPoints.x - rot.y*-_anchorPointInPoints.y;
+    CGFloat y = _body->p.y + rot.y*-_anchorPointInPoints.x + rot.x*-_anchorPointInPoints.y;
+	
+    if(_ignoreAnchorPointForPosition){
+		x += _anchorPointInPoints.x;
+		y += _anchorPointInPoints.y;
+	}
+	
+	return (_transform = CGAffineTransformMake(rot.x, rot.y, -rot.y,	rot.x, x,	y));
+}
+
+
+// this method will only get called if the sprite is batched.
+// return YES if the physic's values (angles, position ) changed.
+// If you return NO, then nodeToParentTransform won't be called.
+-(BOOL) dirty
+{
+	return YES;
+}
+
 
 @end

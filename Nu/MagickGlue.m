@@ -16,6 +16,8 @@
 
 @implementation MagickGlue
 
++ (int)magickConvert:(id)lst { return [MagickGlue convert:lst]; }
+
 static int magickCommandGenesis(MagickCommand command, id arr)
 {
     ExceptionInfo *exception;

@@ -1,6 +1,7 @@
 #import "Nu.h"
 #include <event2/http.h>
 #import "ObjectiveChipmunk.h"
+#import "JSONKit.h"
 
 id nu_map(id enumerable, id block, Class class)
 {
@@ -275,7 +276,7 @@ id nu_trues(id enumerable, id block, Class class)
         [args release];
     } else {
         for (id obj in enumerable) {
-            if ([obj isEqual:block]) {
+            if (!nu_valueIsNull(obj)) {
                 [results addObject:obj];
             }
         }
@@ -521,41 +522,19 @@ id nu_trues(id enumerable, id block, Class class)
     return [cursor car];
 }
 
-// When an unknown message is received by a cell, treat it as a call to objectAtIndex:
-- (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
+- (id)handleUnknownMessage:(id)message withContext:(NSMutableDictionary *)context
 {
-    if (nu_valueIsNull(method)) {
+    if (nu_valueIsNull(message))
         return self;
-    }
-    
-    if ([[method car] isKindOfClass:[NuSymbol class]]) {
-        NSString *methodName = [[method car] stringValue];
-        NSUInteger length = [methodName length];
-        if (([methodName characterAtIndex:0] == 'c') && ([methodName characterAtIndex:(length - 1)] == 'r')) {
-            id cursor = self;
-            BOOL valid = YES;
-            for (int i = 1; valid && (i < length - 1); i++) {
-                switch ([methodName characterAtIndex:i]) {
-                    case 'd': cursor = [cursor cdr]; break;
-                    case 'a': cursor = [cursor car]; break;
-                    default:  valid = NO;
-                }
-            }
-            if (valid) return cursor;
-        }
-    }
-    id m = [[method car] evalWithContext:context];
-    if ([m isKindOfClass:[NSNumber class]]) {
-        int mm = [m intValue];
+    if (nu_objectIsKindOfClass([message car], [NSNumber class])) {
+        int mm = [[message car] intValue];
         if (mm < 0) {
             // if the index is negative, index from the end of the array
             mm += [self length];
         }
         return [self objectAtIndex:mm];
     }
-    else {
-        return [super handleUnknownMessage:method withContext:context];
-    }
+    return Nu__null;
 }
 
 - (id) lastObject
@@ -636,11 +615,11 @@ id nu_trues(id enumerable, id block, Class class)
             }
         }
         // to improve error reporting, add the currently-evaluating expression to the context
-        [context setObject:self forKey:[[NuSymbolTable sharedSymbolTable] symbolWithString:@"_expression"]];
+        [context setObject:self forKey:nusym(@"_expression")];
         
         
         result = [value evalWithArguments:cdr context:context];
-        [context setPossiblyNullObject:result forKey:[[NuSymbolTable sharedSymbolTable] symbolWithString:@"_"]];
+        [context setPossiblyNullObject:result forKey:nusym(@"_")];
         
         if (NU_LIST_EVAL_END_ENABLED()) {
             if ((self->line != -1) && (self->file)) {
@@ -932,10 +911,53 @@ id nu_trues(id enumerable, id block, Class class)
 
 @implementation NSArray(Nu)
 
-- (id)valueForUndefinedKey:(NSString *)key
+- (id)valueForKey:(NSString *)key
 {
-    return [NSString stringWithFormat:@"hey undefined key: %@", key];
+    return [super valueForKey:key];
 }
+
+- (void)setValue:(id)value forKey:(NSString *)key
+{
+    return [super setValue:value forKey:key];
+}
+
+- (void)swizzleAddObject:(id)anObject
+{
+    [self swizzleAddObject:((anObject == nil) ? (id)[NSNull null] : anObject)];
+}
+
+- (void)swizzleInsertObject:(id)anObject atIndex:(int)index
+{
+    [self swizzleInsertObject:((anObject == nil) ? (id)[NSNull null] : anObject) atIndex:index];
+}
+
+- (void)swizzleReplaceObjectAtIndex:(int)index withObject:(id)anObject
+{
+    [self swizzleReplaceObjectAtIndex:index withObject:((anObject == nil) ? (id)[NSNull null] : anObject)];
+}
+
+- (NSString *)stringValue
+{
+    return [self description];
+}
+
+/*- (id)valueForUndefinedKey:(NSString *)key
+{
+    const char *cstring = [key cStringUsingEncoding:NSUTF8StringEncoding];
+    char *endptr;
+    long lvalue = strtol(cstring, &endptr, 0);
+    if (*endptr != 0)
+        return nil;
+    
+    if (lvalue < 0) {
+        // if the index is negative, index from the end of the array
+        lvalue += [self count];
+    }
+    if ((lvalue < [self count]) && (lvalue >= 0)) {
+        return [self objectAtIndex:lvalue];
+    }
+    return Nu__null;
+}*/
 
 - (CGPoint)pointValue
 {
@@ -970,8 +992,6 @@ id nu_trues(id enumerable, id block, Class class)
         return CGSizeMake(0.0, 0.0);
     return CGSizeMake([[self objectAtIndex:0] floatValue], [[self objectAtIndex:1] floatValue]);
 }
-
-- (id)superDescription { return [super description]; }
 
 - (id)array { return self; }
 
@@ -1018,9 +1038,8 @@ id arrip(NSArray *arr, NSIndexPath *ip)
             return Nu__null;
         }
     }
-    else {
-        return [super handleUnknownMessage:method withContext:context];
-    }
+
+    return Nu__null;
 }
 
 // This default sort method sorts an array using its elements' compare: method.
@@ -1160,7 +1179,26 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
 
 @implementation NSSet(Nu)
 
-- (NSString *)superDescription { return [super description]; }
+- (id)valueForKey:(NSString *)key
+{
+    return [super valueForKey:key];
+}
+
+- (void)setValue:(id)value forKey:(NSString *)key
+{
+    return [super setValue:value forKey:key];
+}
+
+- (void)swizzleAddObject:(id)anObject
+{
+    [self swizzleAddObject:((anObject == nil) ? (id)[NSNull null] : anObject)];
+}
+
+
+- (NSString *)stringValue
+{
+    return [self description];
+}
 
 + (NSSet *) setWithList:(id) list
 {
@@ -1224,9 +1262,35 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
 
 @implementation NSDictionary(Nu)
 
+- (NSArray *)keys { return self.allKeys; }
+- (NSArray *)vals { return self.allValues; }
+
+- (BOOL)writeToFile:(NSString *)path { return [self writeToFile:path atomically:YES]; }
+
+- (void)swizzleSetObject:(id)anObject forKey:(id)aKey
+{
+    [self swizzleSetObject:((anObject == nil) ? (id)[NSNull null] : anObject) forKey:aKey];
+}
+
+- (NSString *)stringValue
+{
+    NSMutableArray *arr = [[[NSMutableArray alloc] init] autorelease];
+    [arr addObject:@"{\n"];
+    for (id key in self) {
+        id val = [self objectForKey:key];
+        if (nu_objectIsKindOfClass(val, [NSDictionary class])) {
+            [arr addObject:[NSString stringWithFormat:@"\t%@ = %@,\n", [key stringValue], [val description]]];
+        } else {
+            [arr addObject:[NSString stringWithFormat:@"\t%@ = %@,\n", [key stringValue], [val stringValue]]];
+        }
+    }
+    [arr addObject:@"}\n"];
+    return [arr componentsJoinedByString:@""];
+}
+
 - (NSData *)jsonEncode
 {
-    return [NSJSONSerialization dataWithJSONObject:self options:NSJSONWritingPrettyPrinted error:nil];
+    return self.JSONData;
 }
 
 - (id)superDescription { return [super description]; }
@@ -1267,47 +1331,9 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
     return value ? value : defaultValue;
 }
 
-// When an unknown message is received by a dictionary, treat it as a call to objectForKey:
-- (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
+- (id)handleUnknownMessage:(id)message withContext:(NSMutableDictionary *)context
 {
-    if (nu_valueIsNull(method)) {
-        return self;
-    }
-    
-    id result = nil;
-    id cursor = method;
-    while (!nu_valueIsNull(cursor) && !nu_valueIsNull([cursor cdr])) {
-        id key = [cursor car];
-        id value = [[cursor cdr] car];
-        if (nu_objectIsKindOfClass(key, [NuSymbol class]) && [key isLabel]) {
-            id evaluated_key = [key labelName];
-            id evaluated_value = [value evalWithContext:context];
-            [self setValue:evaluated_value forKey:evaluated_key];
-            result = self;
-        } else if (nu_objectIsKindOfClass(key, [NSString class])) {
-            id evaluated_key = [key evalWithContext:context];
-            id evaluated_value = [value evalWithContext:context];
-            [self setValue:evaluated_value forKey:evaluated_key];
-            result = self;
-        } else {
-            result = [key evalWithContext:context];
-            cursor = [cursor cdr];
-            continue;
-        }
-        cursor = [[cursor cdr] cdr];
-    }
-    if (!nu_valueIsNull(cursor)) {
-        // if the method is a label, use its value as the key.
-        NSLog(@"8198 %@", cursor);
-        if (nu_objectIsKindOfClass([cursor car], [NuSymbol class])) {
-            result = [self valueForKey:[[cursor car] stringValue]];
-        } else if (nu_objectIsKindOfClass([cursor car], [NSString class])) {
-            result = [self valueForKey:[cursor car]];
-        } else {
-            result = [[cursor car] evalWithContext:context];
-        }
-    }
-    return (result) ? result : Nu__null;
+    return Nu__null;
 }
 
 // Iterate over the key-object pairs in a dictionary. Pass it a block with two arguments: (key object).
@@ -1347,119 +1373,36 @@ static NSComparisonResult sortedArrayUsingBlockHelper(id a, id b, void *context)
     return [self count];
 }
 
-int strchrcount(char *str, char c)
-{
-    int count = 0;
-    char *p = str;
-    if (!p)
-        return 0;
-    while (*p) {
-        p = strchr(p, c);
-        if (!p)
-            return count;
-        count++;
-        p++;
-    }
-    return count;
-}
-
-- (BOOL)respondsToSelector:(SEL)selector
-{
-    if ([super respondsToSelector:selector]) {
-        return YES;
-    }
-    char *name = (char *)sel_getName(selector);
-    if ([self valueForKey:[NSString stringWithUTF8String:name]]) {
-        return YES;
-    }
-    return NO;
-}
-
-- (NSMethodSignature *)methodSignatureForSelector:(SEL)selector
-{
-    NSMethodSignature *signature = [super methodSignatureForSelector:selector];
-    if (signature)
-        return signature;
-    char *name = (char *)sel_getName(selector);
-    id obj = [self objectForKey:[NSString stringWithUTF8String:name]];
-    if (!obj) {
-        return nil;
-    }
-    if (nu_objectIsKindOfClass(obj, [NuImp class])) {
-        return [obj methodSignature];
-    }
-    int argc = strchrcount(name, ':');
-    NSMutableString *str = [[[NSMutableString alloc] init] autorelease];
-    [str appendString:@"@@:"];
-    for(int i=0; i<argc; i++) {
-        [str appendString:@"@"];
-    }
-    return [NSMethodSignature signatureWithObjCTypes:[str cStringUsingEncoding:NSUTF8StringEncoding]];
-}
-
-id execute_block_safely(id (^block)())
-{
-    id result = nil;
-    @try {
-        result = block();
-    }
-    @catch (NuException* nuException) {
-        prn([NSString stringWithFormat:@"%s", [[nuException dump] cStringUsingEncoding:NSUTF8StringEncoding]]);
-    }
-    @catch (id exception) {
-        prn([NSString stringWithFormat:@"%s: %s",
-             [[exception name] cStringUsingEncoding:NSUTF8StringEncoding],
-             [[exception reason] cStringUsingEncoding:NSUTF8StringEncoding]]);
-    }
-    return result;
-}
-
-- (void)forwardInvocation:(NSInvocation *)invocation
-{
-    NSLog(@"forwardInvocation %@", invocation);
-    NSMethodSignature *signature = [invocation methodSignature];
-    int argc = [signature numberOfArguments];
-    NSString *name = [NSString stringWithUTF8String:sel_getName([invocation selector])];
-    id obj = [self objectForKey:name];
-    if (!obj) {
-        [invocation setReturnValue:&obj];
-        return;
-    }
-    if (nu_objectIsKindOfClass(obj, [NuImp class])) {
-        NuBlock *block = [obj block];
-        //NSLog(@"----------------------------------------");
-        //NSLog(@"calling block %@", [block stringValue]);
-        NuCell *head = nil, *tail = nil;
-        for(int i=2; i<argc; i++) {
-            id arg;
-            [invocation getArgument:&arg atIndex:i];
-            tail = nucons1(tail, get_nu_value_from_objc_value(&arg, [signature getArgumentTypeAtIndex:i]));
-            if (!head)
-                head = tail;
-        }
-        id result = execute_block_safely(^(void) { return [block evalWithArguments:head]; });
-        id returnvalue = nil;
-        set_objc_value_from_nu_value(&returnvalue, result, [signature methodReturnType]);        
-        [invocation setReturnValue:&returnvalue];
-        return;
-    }
-    
-    NuCell *head = nil, *tail = nil;
-    for(int i=2; i<argc; i++) {
-        id arg;
-        [invocation getArgument:&arg atIndex:i];
-        tail = nucons1(tail, arg);
-        if (!head)
-            head = tail;
-    }
-    id result = execute_block_safely(^(void) { return [obj evalWithArguments:head]; });
-    [invocation setReturnValue:&result];
-}
 
 @end
 
 @implementation NSMutableDictionary(Nu)
 
+- (id)valueForIvar:(NSString *)name
+{
+    return [self valueForKey:name];
+}
+
+- (void)setValue:(id)value forIvar:(NSString *)name
+{
+    [self setValue:value forKey:name];
+}
+
+- (NSString *)stringValue
+{
+    NSMutableArray *arr = [[[NSMutableArray alloc] init] autorelease];
+    [arr addObject:@"{\n"];
+    for (id key in self) {
+        id val = [self objectForKey:key];
+        if (nu_objectIsKindOfClass(val, [NSDictionary class])) {
+            [arr addObject:[NSString stringWithFormat:@"\t%@ = %@,\n", [key stringValue], [val description]]];
+        } else {
+            [arr addObject:[NSString stringWithFormat:@"\t%@ = %@,\n", [key stringValue], [val stringValue]]];
+        }
+    }
+    [arr addObject:@"}\n"];
+    return [arr componentsJoinedByString:@""];
+}
 - (id)consumeKey:(NSString *)key
 {
     id val = [self valueForKey:key];
@@ -1475,6 +1418,31 @@ id execute_block_safely(id (^block)())
 {
     id object = [self objectForKey:key];
     if (object) return object;
+    
+    if (nu_objectIsKindOfClass(key, [NuSymbol class])) {
+        object = [self valueForKey:[key stringValue]];
+        if (object)
+            return object;
+    }
+
+    id context = [self valueForKey:@"_object_context"];
+    if (context) {
+        if (nu_objectIsKindOfClass(key, [NuSymbol class])) {
+            @try {
+            object = [context valueForKey:[key stringValue]];
+            if (object)
+                return object;
+            } @catch (id e) {
+            }
+        } else if (nu_objectIsKindOfClass(key, [NSString class])) {
+            @try {
+            object = [context valueForKey:key];
+            if (object)
+                return object;
+            } @catch (id e) {
+            }
+        }
+    }
     id parent = [self objectForKey:PARENT_KEY];
     if (!parent) return nil;
     return [parent lookupObjectForKey:key];
@@ -1523,6 +1491,17 @@ id execute_block_safely(id (^block)())
     [super dealloc];
 }
 
+@end
+
+@implementation NSURL(Nu)
+- (BOOL)removeFile
+{
+    if (self.isFileURL) {
+        NSFileManager *fm = [NSFileManager defaultManager];
+        return [fm removeItemAtURL:self error:nil];
+    }
+    return NO;
+}
 @end
 
 @implementation NSString(Nu)
@@ -1620,7 +1599,9 @@ id execute_block_safely(id (^block)())
     @try {
         [parser setFilename:@"user"];
         id progn = [[parser parse:self] retain];
-        result = [progn evalWithContext:[parser context]];
+        NSMutableDictionary *context = [[NSMutableDictionary alloc] init];
+        result = [progn evalWithContext:context];
+        [context release];
         [progn release];
     }
     @catch (NuException* nuException) {
@@ -1687,8 +1668,7 @@ id execute_block_safely(id (^block)())
         result = [NSMutableString stringWithString:self];
     }
     else {
-        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-        id parser = [context lookupObjectForKey:[symbolTable symbolWithString:@"_parser"]];
+        id parser = [Nu sharedParser];
         result = [NSMutableString stringWithString:[components objectAtIndex:0]];
         int i;
         for (i = 1; i < [components count]; i++) {
@@ -1701,8 +1681,10 @@ id execute_block_safely(id (^block)())
                     body = [parser parse:expression];
                 }
                 id value = [body evalWithContext:context];
-                NSString *stringValue = [value stringValue];
-                [result appendString:stringValue];
+                if (value) {
+                    NSString *stringValue = [value stringValue];
+                    [result appendString:stringValue];
+                }
             }
             [result appendString:[parts objectAtIndex:1]];
             int j = 2;
@@ -1753,7 +1735,7 @@ id execute_block_safely(id (^block)())
 // Convert a string into a symbol.
 - (id) symbolValue
 {
-    return [[NuSymbolTable sharedSymbolTable] symbolWithString:self];
+    return nusym(self);
 }
 
 // Split a string into lines.
@@ -1811,22 +1793,6 @@ id execute_block_safely(id (^block)())
     return self;
 }
 
-- (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
-{
-    if (nu_valueIsNull(method)) {
-        return self;
-    }
-    NSMutableArray *arr = [[[NSMutableArray alloc] init] autorelease];
-    [arr addObject:self];
-    for (id elt in method) {
-        id val = [elt evalWithContext:context];
-        if (!nu_valueIsNull(val)) {
-            [arr addObject:[val stringValue]];
-        }
-    }
-    return [arr join:@""];
-}
-
 NSString *evhttp_objc_string(char *buf)
 {
     if (!buf)
@@ -1876,7 +1842,7 @@ NSString *evhttp_objc_string(char *buf)
 
 - (id)jsonDecode
 {
-    return [NSJSONSerialization JSONObjectWithData:[self dataValue] options:0 error:nil];
+    return self.mutableObjectFromJSONString;
 }
 
 @end
@@ -1917,7 +1883,7 @@ NSString *evhttp_objc_string(char *buf)
 
 - (id)jsonDecode
 {
-    return [NSJSONSerialization JSONObjectWithData:self options:NSJSONReadingMutableContainers|NSJSONReadingMutableLeaves|NSJSONReadingAllowFragments error:nil];
+    return self.mutableObjectFromJSONData;
 }
 
 - (NSMutableDictionary *)queryStringDecode
@@ -1941,6 +1907,17 @@ NSString *evhttp_objc_string(char *buf)
 @end
 
 @implementation NSNumber(Nu)
+
+- (id)arrayToIncluding:(int)end
+{
+    NSMutableArray *arr = [[[NSMutableArray alloc] init] autorelease];
+    for (int i=[self intValue]; i<=end; i++) {
+        [arr addObject:nuint(i)];
+    }
+    return arr;
+}
+- (id)arrayTo:(int)end { return [self arrayToIncluding:end]; }
+- (id)arrayToExcluding:(int)end { return [self arrayToIncluding:end-1]; }
 
 - (id)listToIncluding:(int)end
 {
@@ -2105,6 +2082,32 @@ NSString *evhttp_objc_string(char *buf)
 
 
 @implementation UIView(Nu)
+
+- (id)handleUnknownMessage:(id)message withContext:(NSMutableDictionary *)context
+{
+    if (nu_valueIsNull(message))
+        return self.subviews;
+    if (nu_objectIsKindOfClass([message car], [NSNumber class])) {
+        int mm = [[message car] intValue];
+        if (mm < 0) {
+            // if the index is negative, index from the end of the array
+            mm += [self.subviews length];
+        }
+        return [self.subviews objectAtIndex:mm];
+    }
+    return Nu__null;
+}
+
+- (void)dealloc
+{
+//    NSLog(@"UIView dealloc %@", self);
+    id block = [self valueForIvar:@"deallocBlock"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nil]; });
+    }
+    [super dealloc];
+}
+
 + (id)objectWithProperties:(NSDictionary *)dict
 {
     NSMutableDictionary *prop = [dict mutableCopy];
@@ -2114,6 +2117,125 @@ NSString *evhttp_objc_string(char *buf)
     [obj setValuesForKeysWithDictionary:prop];
     return obj;    
 }
+
+- (void)didMoveToSuperview
+{
+    id block = [self valueForIvar:@"didMoveToSuperview"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nil]; });
+    }
+}
+
+- (void)swizzleLayoutSubviews
+{
+    id block = [self valueForIvar:@"layoutSubviews"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nil]; });
+        return;
+    }
+    [self swizzleLayoutSubviews];
+}
+
+- (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    id block = [self valueForIvar:@"touchesBegan:withEvent:"];
+    if (!nu_valueIsNull(block)) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(touches, event, nil)]; });
+        return;
+    }
+    [super touchesBegan:touches withEvent:event];
+}
+
+- (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    id block = [self valueForIvar:@"touchesCancelled:withEvent:"];
+    if (!nu_valueIsNull(block)) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(touches, event, nil)]; });
+        return;
+    }
+    [super touchesCancelled:touches withEvent:event];
+}
+
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    id block = [self valueForIvar:@"touchesEnded:withEvent:"];
+    if (!nu_valueIsNull(block)) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(touches, event, nil)]; });
+        return;
+    }
+    [super touchesEnded:touches withEvent:event];
+}
+
+- (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    id block = [self valueForIvar:@"touchesMoved:withEvent:"];
+    if (!nu_valueIsNull(block)) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(touches, event, nil)]; });
+        return;
+    }
+    [super touchesMoved:touches withEvent:event];
+}
+
+- (CGFloat)x { return self.frame.origin.x; }
+- (CGFloat)y { return self.frame.origin.y; }
+- (CGFloat)w { return self.frame.size.width; }
+- (CGFloat)h { return self.frame.size.height; }
+- (void)setX:(CGFloat)x
+{
+    CGRect r = self.frame;
+    r.origin.x = x;
+    self.frame = r;
+}
+- (void)setY:(CGFloat)y
+{
+    CGRect r = self.frame;
+    r.origin.y = y;
+    self.frame = r;
+}
+- (void)setW:(CGFloat)w
+{
+    CGRect r = self.frame;
+    r.size.width = w;
+    self.frame = r;
+}
+- (void)setH:(CGFloat)h
+{
+    CGRect r = self.frame;
+    r.size.height = h;
+    self.frame = r;
+}
+
+@end
+
+
+@implementation UIViewController(Nu)
+
+- (void)swizzleLoadView
+{
+    id block = [self valueForIvar:@"loadView"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nil]; });
+        return;
+    }
+    [self swizzleLoadView];
+}
+- (void)swizzleViewWillAppear:(BOOL)animated
+{
+    [self swizzleViewWillAppear:animated];
+    id block = [self valueForIvar:@"viewWillAppearBlock:"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(nuint(animated), nil)]; });
+    }
+}
+- (void)swizzleViewDidAppear:(BOOL)animated
+{
+    [self swizzleViewDidAppear:animated];
+    id block = [self valueForIvar:@"viewDidAppearBlock:"];
+    if (block) {
+        execute_block_safely(^(void) { return [block evalWithArguments:nulist(nuint(animated), nil)]; });
+    }
+}
+
 @end
 
 @implementation UITableView(Nu)
@@ -2136,10 +2258,20 @@ NSString *evhttp_objc_string(char *buf)
 
 - (void)setData:(id)data
 {
-    [self setValue:data forIvar:@"data"];
-    [self setDataSource:data];
-    [self setDelegate:data];
-    [self reloadData];
+    if (nu_objectIsKindOfClass(data, [NSDictionary class])) {
+        [self setDataSource:data];
+        [self setDelegate:data];
+        [self setValue:data forIvar:@"data"];
+        [self reloadData];
+        NSLog(@"reloaded UITableView %@", data);
+    }
 }
+
+@end
+
+@implementation UIImage(Nu)
+
+- (CGFloat)w { return self.size.width; }
+- (CGFloat)h { return self.size.height; }
 
 @end

@@ -50,7 +50,6 @@
 {
     id cadr = [cdr car];
     id value = [cadr evalWithContext:context];
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     if ([value atom])
         return Nu__t;
     else
@@ -92,7 +91,6 @@
 @implementation Nu_eq_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -103,7 +101,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -118,7 +116,6 @@
     id caddr = [[cdr cdr] car];
     id value1 = [cadr evalWithContext:context];
     id value2 = [caddr evalWithContext:context];
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     if ((value1 == nil) && (value2 == nil)) {
         return Nu__null;
     }
@@ -126,7 +123,7 @@
         return Nu__null;
     }
     else {
-        return [symbolTable symbolWithString:@"t"];
+        return Nu__t;
     }
 }
 
@@ -138,7 +135,6 @@
 @implementation Nu_pointereq_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -149,7 +145,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -273,19 +269,21 @@
 
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context flipped:(bool)flip
 {    
-    id result = Nu__null;
     id test = [[cdr car] evalWithContext:context];
     
     bool testIsTrue = flip ^ nu_valueIsTrue(test);
+    if (!testIsTrue)
+        return nil;
     
     id expressions = [cdr cdr];
-    while (expressions && (expressions != Nu__null)) {
-        id nextExpression = [expressions car];
-        if (testIsTrue)
-            result = [nextExpression evalWithContext:context];
-        expressions = [expressions cdr];
-    }
-    return result;
+    
+    /* replace with call to new-let */
+    NuSymbol *progn = nusym(@"progn");
+    NSMutableDictionary *c = [[NSMutableDictionary alloc] init];
+    [c setPossiblyNullObject:context forKey:PARENT_KEY];
+    id value = [[progn value] evalWithArguments:expressions context:c];
+    [c release];
+    return value;
 }
 
 @end
@@ -416,9 +414,8 @@
 @implementation Nu_try_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    id catchSymbol = [symbolTable symbolWithString:@"catch"];
-    id finallySymbol = [symbolTable symbolWithString:@"finally"];
+    id catchSymbol = nusym(@"catch");
+    id finallySymbol = nusym(@"finally");
     id result = Nu__null;
     
     @try
@@ -545,8 +542,7 @@
 {
     id car = [cdr car];
     if (nu_objectIsKindOfClass(car, [NuCell class])) {
-        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-        id list = [[symbolTable symbolWithString:@"list"] value];
+        id list = [nusym(@"list") value];
         return [list callWithArguments:car context:context];
     }
     return car;
@@ -586,10 +582,8 @@
 
 - (id) evalQuasiquote:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    
-    id quasiquote_eval = [[symbolTable symbolWithString:@"quasiquote-eval"] value];
-    id quasiquote_splice = [[symbolTable symbolWithString:@"quasiquote-splice"] value];
+    id quasiquote_eval = [nusym(@"quasiquote-eval") value];
+    id quasiquote_splice = [nusym(@"quasiquote-splice") value];
     
     QuasiLog(@"bq:Entered. callWithArguments cdr = %@", [cdr stringValue]);
     
@@ -610,12 +604,12 @@
             QuasiLog(@"  quasiquote: null-list");
             value = Nu__null;
         }
-        else if ([[symbolTable lookup:[[[cursor car] car] stringValue]] value] == quasiquote_eval) {
+        else if ([[[NuSymbolTable sharedSymbolTable] lookup:[[[cursor car] car] stringValue]] value] == quasiquote_eval) {
             QuasiLog(@"quasiquote-eval: Evaling: [[cursor car] cdr]: %@", [[[cursor car] cdr] stringValue]);
             value = [[[cursor car] cdr] evalWithContext:context];
             QuasiLog(@"  quasiquote-eval: Value: %@", [value stringValue]);
         }
-        else if ([[symbolTable lookup:[[[cursor car] car] stringValue]] value] == quasiquote_splice) {
+        else if ([[[NuSymbolTable sharedSymbolTable] lookup:[[[cursor car] car] stringValue]] value] == quasiquote_splice) {
             QuasiLog(@"quasiquote-splice: Evaling: [[cursor car] cdr]: %@",
                      [[[cursor car] cdr] stringValue]);
             value = [[[cursor car] cdr] evalWithContext:context];
@@ -742,15 +736,13 @@
         [symbol setValue:result];
     }
     else if (c == '@') {
-        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-        id object = [context lookupObjectForKey:[symbolTable symbolWithString:@"self"]];
+        id object = [context lookupObjectForKey:nusym(@"self")];
         id ivar = [[symbol stringValue] substringFromIndex:1];
         [object setValue:result forIvar:ivar];
     }
     else {
 #ifndef CLOSE_ON_VALUES
-        NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-        id classSymbol = [symbolTable symbolWithString:@"_class"];
+        id classSymbol = nusym(@"_class");
         id searchContext = context;
         while (searchContext) {
             if ([searchContext objectForKey:symbol]) {
@@ -859,7 +851,6 @@
     id name = [call car];
     id margs = [call cdr];
     
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id macro = [name evalWithContext:context];
     
     if (macro == nil) {
@@ -905,16 +896,6 @@
 @implementation Nu_add_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    if ([context objectForKey:[symbolTable symbolWithString:@"_class"]] && ![context objectForKey:[symbolTable symbolWithString:@"_method"]]) {
-        // we are inside a class declaration and outside a method declaration.
-        // treat this as a "cmethod" call
-        NuClass *classWrapper = [context objectForKey:[symbolTable symbolWithString:@"_class"]];
-        [classWrapper registerClass];
-        Class classToExtend = [classWrapper wrappedClass];
-        return help_add_method_to_class(classToExtend, cdr, context, YES);
-    }
-    // otherwise, it's an addition
     id firstArgument = [[cdr car] evalWithContext:context];
     if (nu_objectIsKindOfClass(firstArgument, [NSValue class])) {
         double sum = [firstArgument doubleValue];
@@ -964,16 +945,6 @@
 @implementation Nu_subtract_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    if ([context objectForKey:[symbolTable symbolWithString:@"_class"]] && ![context objectForKey:[symbolTable symbolWithString:@"_method"]]) {
-        // we are inside a class declaration and outside a method declaration.
-        // treat this as an "imethod" call
-        NuClass *classWrapper = [context objectForKey:[symbolTable symbolWithString:@"_class"]];
-        [classWrapper registerClass];
-        Class classToExtend = [classWrapper wrappedClass];
-        return help_add_method_to_class(classToExtend, cdr, context, NO);
-    }
-    // otherwise, it's a subtraction
     id cursor = cdr;
     double sum = [[[cursor car] evalWithContext:context] doubleValue];
     cursor = [cursor cdr];
@@ -1036,13 +1007,13 @@
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
     id cursor = cdr;
-    int product = [[[cursor car] evalWithContext:context] intValue];
+    long long product = [[[cursor car] evalWithContext:context] longLongValue];
     cursor = [cursor cdr];
     while (cursor && (cursor != Nu__null)) {
-        product %= [[[cursor car] evalWithContext:context] intValue];
+        product %= [[[cursor car] evalWithContext:context] longLongValue];
         cursor = [cursor cdr];
     }
-    return [NSNumber numberWithInt:product];
+    return [NSNumber numberWithLongLong:product];
 }
 
 @end
@@ -1054,13 +1025,13 @@
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
     id cursor = cdr;
-    long result = [[[cursor car] evalWithContext:context] longValue];
+    unsigned long result = [[[cursor car] evalWithContext:context] unsignedLongValue];
     cursor = [cursor cdr];
     while (cursor && (cursor != Nu__null)) {
-        result &= [[[cursor car] evalWithContext:context] longValue];
+        result &= [[[cursor car] evalWithContext:context] unsignedLongValue];
         cursor = [cursor cdr];
     }
-    return [NSNumber numberWithLong:result];
+    return [NSNumber numberWithUnsignedLong:result];
 }
 
 @end
@@ -1072,13 +1043,26 @@
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
     id cursor = cdr;
-    long result = [[[cursor car] evalWithContext:context] longValue];
+    unsigned long result = [[[cursor car] evalWithContext:context] unsignedLongValue];
     cursor = [cursor cdr];
     while (cursor && (cursor != Nu__null)) {
-        result |= [[[cursor car] evalWithContext:context] longValue];
+        result |= [[[cursor car] evalWithContext:context] unsignedLongValue];
         cursor = [cursor cdr];
     }
-    return [NSNumber numberWithLong:result];
+    return [NSNumber numberWithUnsignedLong:result];
+}
+
+@end
+
+@interface Nu_bitwisenot_operator : NuOperator {}
+@end
+
+@implementation Nu_bitwisenot_operator
+- (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
+{
+    unsigned long result = [[[cdr car] evalWithContext:context] unsignedLongValue];
+    result = ~result;
+    return [NSNumber numberWithUnsignedLong:result];
 }
 
 @end
@@ -1089,7 +1073,6 @@
 @implementation Nu_greaterthan_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -1101,7 +1084,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -1112,7 +1095,6 @@
 @implementation Nu_lessthan_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -1124,7 +1106,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -1135,7 +1117,6 @@
 @implementation Nu_gte_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -1147,7 +1128,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -1158,7 +1139,6 @@
 @implementation Nu_lte_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     id current = [[cursor car] evalWithContext:context];
     cursor = [cursor cdr];
@@ -1170,7 +1150,7 @@
         current = next;
         cursor = [cursor cdr];
     }
-    return [symbolTable symbolWithString:@"t"];
+    return Nu__t;
 }
 
 @end
@@ -1244,11 +1224,10 @@
 @implementation Nu_not_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id cursor = cdr;
     if (cursor && (cursor != Nu__null)) {
         id value = [[cursor car] evalWithContext:context];
-        return nu_valueIsTrue(value) ? Nu__null : [symbolTable symbolWithString:@"t"];
+        return nu_valueIsTrue(value) ? Nu__null : Nu__t;
     }
     return Nu__null;
 }
@@ -1329,15 +1308,53 @@
 @end
 
 @implementation Nu_progn_operator
+
+id set_context_key_val(NSMutableDictionary *context, NSString *key, id val)
+{
+    NuSymbol *symbol = nusym(key);
+    id searchContext = context;
+    while (searchContext) {
+        if ([searchContext objectForKey:symbol]) {
+            [searchContext setPossiblyNullObject:val forKey:symbol];
+            return val;
+        }
+        else if ([searchContext valueForKey:key]) {
+            [searchContext setPossiblyNullObject:val forKey:key];
+            return val;
+        }
+        searchContext = [searchContext objectForKey:PARENT_KEY];
+    }
+    [context setPossiblyNullObject:val forKey:key];
+    return val;
+}
+
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    id value = Nu__null;
+    id result = nil;
     id cursor = cdr;
-    while (cursor && (cursor != Nu__null)) {
-        value = [[cursor car] evalWithContext:context];
+    while (!nu_valueIsNull(cursor)) {
+        id key = [cursor car];
         cursor = [cursor cdr];
+        if (!nu_valueIsNull(cursor)) {
+            if (nu_objectIsKindOfClass(key, [NuSymbol class]) && [key isLabel]) {
+                id evaluated_key = [key labelName];
+                id val = [cursor car];
+                cursor = [cursor cdr];
+                id evaluated_val = [val evalWithContext:context];
+//                [context setValue:evaluated_val forKey:evaluated_key];
+                set_context_key_val(context, evaluated_key, evaluated_val);
+                continue;
+            }
+        }
+        @try {
+            result = [key evalWithContext:context];
+        } @catch (NuReturnException *e) {
+            NSLog(@"progn caught NuReturnException value %@", e.value);
+            result = [[e.value retain] autorelease];
+            break;
+        }
     }
-    return value;
+    return (result) ? result : Nu__null;
 }
 
 @end
@@ -1354,6 +1371,20 @@
 
 @end
 
+@interface Nu_new_let_operator : NuOperator {}
+@end
+
+@implementation Nu_new_let_operator
+- (id)callWithArguments:(id)cdr context:(NSMutableDictionary *)context
+{
+    NuSymbol *progn = nusym(@"progn");
+    NSMutableDictionary *c = [[NSMutableDictionary alloc] init];
+    [c setPossiblyNullObject:context forKey:PARENT_KEY];
+    id value = [[progn value] evalWithArguments:cdr context:c];
+    [c release];
+    return value;
+}
+@end
 
 @interface Nu_let_operator : NuOperator {}
 @end
@@ -1417,7 +1448,6 @@
 @implementation Nu_class_operator
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
 {
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
     id className = [cdr car];
     id body;
     Class newClass = nil;
@@ -1426,7 +1456,7 @@
     //NSLog(@"class name: %@", className);
     if ([cdr cdr]
         && ([cdr cdr] != Nu__null)
-        && [[[cdr cdr] car] isEqual: [symbolTable symbolWithString:@"is"]]
+        && [[[cdr cdr] car] isEqual: nusym(@"is")]
         ) {
         id parentName = [[[cdr cdr] cdr] car];
         //NSLog(@"parent name: %@", [parentName stringValue]);
@@ -1471,7 +1501,7 @@
         NuBlock *block = [[NuBlock alloc] initWithParameters:Nu__null body:body context:context];
         [[block context]
          setPossiblyNullObject:childClass
-         forKey:[symbolTable symbolWithString:@"_class"]];
+         forKey:nusym(@"_class")];
         result = [block evalWithArguments:Nu__null context:Nu__null];
         [block release];
     }
@@ -1484,38 +1514,6 @@
 @end
 
 
-
-@interface Nu_ivar_operator : NuOperator {}
-@end
-
-@implementation Nu_ivar_operator
-- (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
-{
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    NuClass *classWrapper = [context objectForKey:[symbolTable symbolWithString:@"_class"]];
-    // this will only work if the class is unregistered...
-    if ([classWrapper isRegistered]) {
-        [NSException raise:@"NuIvarAddedTooLate" format:@"explicit instance variables must be added when a class is created and before any method declarations"];
-    }
-    Class classToExtend = [classWrapper wrappedClass];
-    if (!classToExtend)
-        [NSException raise:@"NuMisplacedDeclaration" format:@"instance variable declaration with no enclosing class declaration"];
-    id cursor = cdr;
-    while (cursor && (cursor != Nu__null)) {
-        id variableType = [cursor car];
-        cursor = [cursor cdr];
-        id variableName = [cursor car];
-        cursor = [cursor cdr];
-        NSString *signature = signature_for_identifier(variableType, symbolTable);
-        nu_class_addInstanceVariable_withSignature(classToExtend,
-                                                   [[variableName stringValue] cStringUsingEncoding:NSUTF8StringEncoding],
-                                                   [signature cStringUsingEncoding:NSUTF8StringEncoding]);
-        //NSLog(@"adding ivar %@ with signature %@", [variableName stringValue], signature);
-    }
-    return Nu__null;
-}
-
-@end
 
 
 @interface Nu_exit_operator : NuOperator {}
@@ -1780,8 +1778,6 @@ id make_imp_block(id cdr, NSMutableDictionary *context)
         [NSException raise:@"Nu_imp_operator" format:@"%@: %@", str, [cdr stringValue]];
     };
     
-    NuSymbolTable *symbolTable = [context objectForKey:SYMBOLS_KEY];
-    
     id returnType = [NSNull null];
     id argumentTypes = nil;
     id argumentNames = nil;
@@ -1828,9 +1824,6 @@ id make_imp_block(id cdr, NSMutableDictionary *context)
             if (!argumentNames)
                 argumentNames = argumentNames_cursor;
         }
-    } else {
-        exception(@"missing argument list");
-        return nil;
     }
     cursor = [cursor cdr];
     if (nu_valueIsNull(cursor)) {
@@ -1842,7 +1835,7 @@ id make_imp_block(id cdr, NSMutableDictionary *context)
     
     // build the signature, first get the return type
     signature = [[NSMutableString alloc] init];
-    [signature appendString:signature_for_identifier(returnType, symbolTable)];
+    [signature appendString:signature_for_identifier(returnType, [NuSymbolTable sharedSymbolTable])];
     
     // then add the common stuff
     [signature appendString:@"@:"];
@@ -1851,13 +1844,15 @@ id make_imp_block(id cdr, NSMutableDictionary *context)
     argumentTypes_cursor = argumentTypes;
     while (!nu_valueIsNull(argumentTypes_cursor)) {
         id typeIdentifier = [argumentTypes_cursor car];
-        [signature appendString:signature_for_identifier(typeIdentifier, symbolTable)];
+        [signature appendString:signature_for_identifier(typeIdentifier, [NuSymbolTable sharedSymbolTable])];
         argumentTypes_cursor = [argumentTypes_cursor cdr];
     }
 
     id body = cursor;
     NuBlock *block = [[[NuBlock alloc] initWithParameters:argumentNames body:body context:context] autorelease];
-    return [[[NuImp alloc] initWithBlock:block signature:[signature cStringUsingEncoding:NSUTF8StringEncoding]] autorelease];
+    id result = [[[NuImp alloc] initWithBlock:block signature:[signature cStringUsingEncoding:NSUTF8StringEncoding]] autorelease];
+    NSLog(@"end make_imp_block");
+    return result;
 }
 
 - (id) callWithArguments:(id)cdr context:(NSMutableDictionary *)context
@@ -1871,7 +1866,7 @@ id make_imp_block(id cdr, NSMutableDictionary *context)
 
 void set_symbol_value(NSString *name, id val)
 {
-    [(NuSymbol *)[[NuSymbolTable sharedSymbolTable] symbolWithString:name] setValue:val];
+    [(NuSymbol *)nusym(name) setValue:val];
 }
 
 void install_builtin(NSString *namespace, NSString *key, id val)
@@ -1930,6 +1925,7 @@ void load_builtins()
     install(@"nu", @"context",  Nu_context_operator);
     install(@"nu", @"my",        Nu_local_operator);
     install(@"nu", @"=",       Nu_global_operator);
+    install(@"nu", @"new-let", Nu_new_let_operator);
     install(@"nu", @"let",      Nu_let_operator);
     
     install(@"nu", @"progn",    Nu_progn_operator);
@@ -1971,6 +1967,7 @@ void load_builtins()
     install(@"nu", @"|",        Nu_bitwiseor_operator);
     install(@"nu", @"<<",       Nu_leftshift_operator);
     install(@"nu", @">>",       Nu_rightshift_operator);
+    install(@"nu", @"~", Nu_bitwisenot_operator);
     
     install(@"nu", @"and",      Nu_and_operator);
     install(@"nu", @"or",       Nu_or_operator);
@@ -1984,7 +1981,6 @@ void load_builtins()
     install_builtin(@"nu", @"dict",     [NSMutableDictionary class]);
     
     install(@"nu", @"class",    Nu_class_operator);
-    install(@"nu", @"ivar",     Nu_ivar_operator);
     
     install(@"nu", @"try",      Nu_try_operator);
     install(@"nu", @"throw",    Nu_throw_operator);
@@ -2025,6 +2021,7 @@ void load_builtins()
     install_static_func(@"math", fabs, "fabs", "dd");
     install_static_func(@"math", random, "random", "l");
     install_static_func(@"math", srandom, "srandom", "vI");
+    install_static_func(@"math", arc4random, "arc4random", "I");
     
     install_static_func(@"nu", get_docs_path, "docs-path", "@");
     install_static_func(@"nu", path_in_docs, "path-in-docs", "@@");
@@ -2046,10 +2043,13 @@ void load_builtins()
     NSLog(@"loading builtin_rom...");
 #include "builtin_const.c"
 #include "builtin_func.c"
-#include "builtin_boot.c"
-#include "builtin_rom.c"
-    
-    [ChipmunkGlue bindings];
+        
+//    install_builtin(@"boot", @"debug-mode", @"1");
+//    install_builtin(@"boot", @"icloud-kvs-path", @"(path-in-docs \"notes\")");
+    install_builtin(@"boot", @"app", @"(UIApplication sharedApplication)");
+    install_builtin(@"boot", @"window", @"(app.delegate window)");
+    install_builtin(@"boot", @"icloud-kvs", @"(app.delegate kvStore)");
+   
 }
 
 @implementation PCRE
@@ -2137,6 +2137,7 @@ void load_builtins()
 @end
 
 @implementation NuCurl
+@synthesize error = _error;
 @synthesize data = _data;
 @synthesize metadata = _metadata;
 
@@ -2225,6 +2226,7 @@ int nucurl_debug_helper(CURL *curl, curl_infotype type, char *p, size_t n, void 
 - (void)error:(NSString *)str val:(int)val
 {
     self.error = [NSString stringWithFormat:@"%@ returned %d '%s', errorbuffer = '%s'", str, val, curl_easy_strerror(val), _errorbuffer];
+    NSLog(@"curl error: %@", self.error);
 }
 
 - (void)reset
@@ -2296,21 +2298,23 @@ int nucurl_debug_helper(CURL *curl, curl_infotype type, char *p, size_t n, void 
     return Nu__null;
 }
 
-- (id) handleUnknownMessage:(NuCell *) method withContext:(NSMutableDictionary *) context
+- (id)evalWithArguments:(id)method context:(NSMutableDictionary *)context
 {
     if (nu_valueIsNull(method)) {
         return self;
     }
     
+    NSLog(@"NuCurl evalWithArguments:%@", method);
+
     id m = [[method car] evalWithContext:context];
+    NSLog(@"m %@", m);
     if (!_curl || [m isKindOfClass:[NSNumber class]]) {
         int mm = [m intValue];
         id param = [[[method cdr] car] evalWithContext:context];
+        NSLog(@"param %@", param);
         return [self curlEasySetopt:mm param:param];
     }
-    else {
-        return [super handleUnknownMessage:method withContext:context];
-    }
+    return [super sendMessage:method withContext:context];
 }
 @end
 

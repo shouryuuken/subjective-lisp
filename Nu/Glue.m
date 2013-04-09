@@ -11,44 +11,56 @@
 #import <CoreText/CoreText.h>
 #include <event2/event.h>
 
-#import "ObjectiveChipmunk.h"
-
 #define M_PI   3.14159265358979323846264338327950288   
 #define DEG_TO_RADIANS(angle) (angle / 180.0 * M_PI)
-
-@class MagickGlue;
 
 @interface Glue : NSObject
 @end
 
 @implementation Glue
 
-+ (id)chipmunkbody
-{
-    id obj;
-    obj = [ChipmunkBody bodyWithMass:INFINITY andMoment:INFINITY];
-    [obj setAngVel:0.4];
-    return obj;
-}
 
-+ (id)test
++ (NSArray*)pixelColorsFromImage:(UIImage*)image
 {
-    NSMutableDictionary *dict = [[[NSMutableDictionary alloc] init] autorelease];
-    [dict setValue:@"hdkslfjlk" forKey:@"arthur"];
-    return [dict arthur];
-}
-
-+ (void)testEnumeration:(NuCell *)lst
-{
-    for (id obj in lst) {
-        prn([obj description]);
+    NSMutableArray *result = [NSMutableArray array];
+    
+    // First get the image into your data buffer
+    CGImageRef imageRef = [image CGImage];
+    NSUInteger width = CGImageGetWidth(imageRef);
+    NSUInteger height = CGImageGetHeight(imageRef);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    unsigned char *rawData = (unsigned char*) calloc(height * width * 4, sizeof(unsigned char));
+    NSUInteger bytesPerPixel = 4;
+    NSUInteger bytesPerRow = bytesPerPixel * width;
+    NSUInteger bitsPerComponent = 8;
+    CGContextRef context = CGBitmapContextCreate(rawData, width, height,
+                                                 bitsPerComponent, bytesPerRow, colorSpace,
+                                                 kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), imageRef);
+    CGContextRelease(context);
+    
+    // Now your rawData contains the image data in the RGBA8888 pixel format.
+    for (int y=0; y<height; y++) {
+        NSMutableArray *row = [NSMutableArray array];
+        for (int x=0; x<width; x++) {
+            int byteIndex = (bytesPerRow * y) + x * bytesPerPixel;
+            CGFloat red   = (rawData[byteIndex]     * 1.0) / 255.0;
+            CGFloat green = (rawData[byteIndex + 1] * 1.0) / 255.0;
+            CGFloat blue  = (rawData[byteIndex + 2] * 1.0) / 255.0;
+            CGFloat alpha = (rawData[byteIndex + 3] * 1.0) / 255.0;
+            UIColor *acolor = [UIColor colorWithRed:red green:green blue:blue alpha:alpha];
+            [row addObject:acolor];
+        }
+        [result addObject:row];
     }
+    
+    free(rawData);
+    
+    return result;
 }
 
-+ (void)libevent
-{
-    event_init();
-}
 
 UIImage *scaleAndRotateImage(UIImage *image, int kMaxResolution)
 {    
@@ -166,8 +178,6 @@ UIImage *scaleAndRotateImage(UIImage *image, int kMaxResolution)
 }
 
 
-+ (int)magickConvert:(id)lst { return [MagickGlue convert:lst]; }
-
 + (UIWebView *)UIWebView:(CGRect)r { return [[[UIWebView alloc] initWithFrame:r] autorelease]; }
 
 + (void)animateWithDuration:(NSTimeInterval)duration block:(NuBlock *)block
@@ -194,6 +204,13 @@ UIImage *scaleAndRotateImage(UIImage *image, int kMaxResolution)
     [Glue writeImage:image path:path];
 }
 
++ (UIImage *)scaleImage:(UIImage *)orig maxPixels:(int)maxPixels
+{
+    UIImage *image = orig;
+    if ((orig.size.width > maxPixels) || (orig.size.height > maxPixels))
+        image = scaleAndRotateImage(orig, maxPixels);
+    return image;
+}
 
 + (CGSize)proportionalSize:(CGSize)currentSize maxSize:(CGSize)maxSize
 {
@@ -305,6 +322,7 @@ static UIFont *fontWithName(NSString *fontName, NSString *str, CGSize fits)
 
 + (NSString *)unicodeForPileOfPoo { return @"\ue05a"; }
 + (NSString *)unicodeForCryingFace { return @"\ue411"; }
++ (NSString *)unicodeForHamster { return @"\U0001F439"; }
 
 + (UIImage *)scaleImageOnly:(UIImage *)image size:(CGSize)s
 {
@@ -836,4 +854,33 @@ void cgpattern_release_helper(void *info)
 
 @end
 
+
+@interface FileDictionary : NSObject
+@property (nonatomic, retain) NSString *path;
+@end
+
+@implementation FileDictionary
+@synthesize path = _path;
+
+- (id)valueForKey:(NSString *)key
+{
+    NSString *file = [self.path stringByAppendingPathComponent:key];
+    if ([file isDirectory]) {
+        FileDictionary *dict = [[[FileDictionary alloc] init] autorelease];
+        dict.path = file;
+        return dict;
+    }
+    return [NSString stringWithContentsOfFile:[self.path stringByAppendingPathComponent:key] encoding:NSUTF8StringEncoding error:nil];
+}
+
+- (void)setValue:(id)value forKey:(NSString *)key
+{
+    if (nu_objectIsKindOfClass(value, [NSString class])) {
+        [(NSString *)value writeToFile:[self.path stringByAppendingPathComponent:key] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    } else {
+        NSLog(@"FileDictionary value is not an NSString, setValue %@ forKey %@", value, key);
+    }
+}
+
+@end
 

@@ -495,7 +495,7 @@ void S9xDumpSPCSnapshot (void)
 
 static void SPCSnapshotCallback (void)
 {
-	S9xSPCDump(S9xGetFilenameInc((".spc"), SPC_DIR));
+//FIXME	S9xSPCDump(S9xGetFilenameInc((".spc"), SPC_DIR));
 	printf("Dumped key-on triggered spc snapshot.\n");
 }
 

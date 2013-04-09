@@ -5,7 +5,20 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>${PRODUCT_NAME}</string>
+	<string>Nu Test</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>plist</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.arthurthegreat.plist</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>${EXECUTABLE_NAME}</string>
 	<key>CFBundleIcons</key>
@@ -13,7 +26,10 @@
 		<key>CFBundlePrimaryIcon</key>
 		<dict>
 			<key>CFBundleIconFiles</key>
-			<array/>
+			<array>
+				<string>sun-72.png</string>
+				<string>sun-144.png</string>
+			</array>
 		</dict>
 	</dict>
 	<key>CFBundleIdentifier</key>
@@ -53,5 +69,39 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>plist</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.arthurthegreat.plist</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<string>plist</string>
+			</dict>
+		</dict>
+	</array>
+	<key>NuLiterals</key>
+	<dict>
+		<key>initial-url</key>
+		<string>http://interactiveios.org/symbols.json</string>
+		<key>initial-file</key>
+		<string>rom.json</string>
+		<key>initial-symbol</key>
+		<string>Particles-2D-app</string>
+	</dict>
+	<key>NuSymbols</key>
+	<dict>
+		<key>debug-mode</key>
+		<string>1</string>
+		<key>icloud-kvs-path</key>
+		<string>(path-in-docs &quot;notes&quot;)</string>
+	</dict>
 </dict>
 </plist>

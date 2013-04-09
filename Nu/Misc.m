@@ -74,6 +74,10 @@ NSString *path_encode(NSString *str)
 
 void show_alert(NSString *title, NSString *message, NSString *cancel)
 {
-    [[[UIAlertView alloc] initWithTitle:title message:message delegate:nil cancelButtonTitle:cancel otherButtonTitles:nil] show];
+    NSLog(@"UIAlertView crashes a lot in iOS 6 because the code is getting worse over time");
+    NSLog(@"Here is what would have been displayed, title '%@' message '%@' cancel '%@'", title, message, cancel);
+/*    UIAlertView *v = [[UIAlertView alloc] initWithTitle:title message:message delegate:nil cancelButtonTitle:cancel otherButtonTitles:nil];
+    [v show];
+    [v release];*/
 }
 

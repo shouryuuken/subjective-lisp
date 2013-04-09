@@ -252,13 +252,13 @@
 
 -(void)tick:(CADisplayLink *)displayLink
 {
-    if (!_space)
+    if (nu_valueIsNull(_space))
         return;
     
 	NSTimeInterval time = displayLink.timestamp;
 	
 //    self.space.gravity = cpvmult([Accelerometer getAcceleration], 600);
-    id step_func = [_space valueForIvar:@"step:"];
+    id step_func = [_space valueForIvar:@"stepBlock:"];
     if (!nu_valueIsNull(step_func)) {
         execute_block_safely(^{ return [step_func evalWithArguments:nulist([NSNumber numberWithFloat:_timeStep], nil)]; });
     } else {
@@ -295,38 +295,26 @@
 	return t_point(_touchTransform, [touch locationInView:touch.view]);
 }
 
-- (void)callTouchesDelegate:(NSString *)key touches:(id)touches event:(id)event
-{
-    id delegate = [self.space valueForIvar:@"touchesDelegate"];
-    if (nu_valueIsNull(delegate))
-        return;
-    id block = [delegate valueForKey:key];
-    if (!nu_valueIsNull(block)) {
-        execute_block_safely(^{
-            return [block evalWithArguments:nulist(self, touches, event, nil)];
-        });
-    }
-}
-
 -(void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-    [self callTouchesDelegate:@"began" touches:touches event:event];
+    [self.space touchesBegan:touches withEvent:event];
 }
 
 -(void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-    [self callTouchesDelegate:@"moved" touches:touches event:event];
+    [self.space touchesMoved:touches withEvent:event];
 }
 
 -(void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event;
 {
-    [self callTouchesDelegate:@"ended" touches:touches event:event];
+    [self.space touchesEnded:touches withEvent:event];
 }
 
 -(void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    [self callTouchesDelegate:@"cancelled" touches:touches event:event];
+    [self.space touchesCancelled:touches withEvent:event];
 }
+
 
 - (ChipmunkSpace *)space { return _space; }
 - (void)setSpace:(ChipmunkSpace *)space

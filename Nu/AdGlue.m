@@ -21,5 +21,9 @@
     return [[[GADBannerView alloc] initWithAdSize:kGADAdSizeBanner] autorelease];
 }
 
++ (CGSize)GADAdSizeBanner
+{
+    return CGSizeFromGADAdSize(kGADAdSizeBanner);
+}
 
 @end
